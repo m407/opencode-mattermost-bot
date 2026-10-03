@@ -52,7 +52,15 @@ Only explicitly allowed users and channels are delivered. Own, system, and delet
 posts are excluded. Posts and edits are separate event kinds, with string IDs and
 millisecond timestamps. Delivery is serialized. A bounded in-memory duplicate
 cache survives reconnects but not process restarts; failed handlers are reported
-through `onError` and are not retried automatically.
+through `onError` and are not retried automatically. Non-system post types such as
+`me`, `slack_attachment`, and `custom_*` retain the same access checks.
+
+At most 2000 running or queued delivery callbacks are retained, including
+`onConnected` recovery. If the queue fills, the adapter reports an error through
+`onError` and reconnects, keeping already accepted callbacks in order. Rejected
+events are not marked as duplicates. Recover overflowed events through the same
+cursor reconciliation used for outages; WebSocket reconnection alone does not
+replay them.
 
 WebSocket is not a durable queue. An application requiring recovery must persist
 a cursor and reconcile posts using `getPostsSince(channelId, timestamp)` in

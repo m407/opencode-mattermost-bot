@@ -35,7 +35,8 @@ export function parsePostEvent(
     typeof p.channel_id !== "string" ||
     typeof p.user_id !== "string" ||
     typeof p.message !== "string" ||
-    typeof p.root_id !== "string"
+    typeof p.root_id !== "string" ||
+    typeof p.type !== "string"
   )
     return null;
   if (
@@ -43,7 +44,7 @@ export function parsePostEvent(
     p.user_id !== options.allowedUserId ||
     !options.allowedChannelIds.includes(p.channel_id) ||
     p.delete_at ||
-    p.type
+    p.type.startsWith("system_")
   )
     return null;
   return { kind, post: p, threadId: p.root_id || p.id };
@@ -59,6 +60,7 @@ export class MattermostEvents {
   private botId = "";
   private retryDelay = 1000;
   private delivery = Promise.resolve();
+  private pendingDeliveries = 0;
   private readonly seen = new Set<string>();
 
   constructor(
@@ -95,12 +97,24 @@ export class MattermostEvents {
     }
   }
 
-  private enqueue(work: () => Promise<void>, generation: number): void {
+  private enqueue(work: () => Promise<void>, generation: number): boolean {
+    // Count running and queued callbacks, including recovery in onConnected.
+    if (this.pendingDeliveries >= 2000) {
+      this.report(
+        new Error("Mattermost delivery queue is full; reconnecting requires reconciliation"),
+      );
+      return false;
+    }
+    ++this.pendingDeliveries;
     this.delivery = this.delivery
       .then(async () => {
         if (!this.stopped && this.generation === generation) await work();
       })
-      .catch((error: unknown) => this.report(error));
+      .catch((error: unknown) => this.report(error))
+      .finally(() => {
+        --this.pendingDeliveries;
+      });
+    return true;
   }
 
   private connect(): void {
@@ -115,6 +129,7 @@ export class MattermostEvents {
     this.socket = socket;
     let alive = true;
     let ready = false;
+    let overloaded = false;
     socket.on("pong", () => {
       alive = true;
     });
@@ -129,16 +144,21 @@ export class MattermostEvents {
       }, 30_000);
     });
     socket.on("message", (raw) => {
-      if (this.stopped || this.socket !== socket) return;
+      if (this.stopped || this.socket !== socket || overloaded) return;
       try {
         const text = raw.toString();
         const envelope = JSON.parse(text) as { event?: string };
         if (envelope.event === "hello" && !ready) {
           ready = true;
           this.retryDelay = 1000;
-          this.enqueue(async () => {
-            await this.options.onConnected?.();
-          }, generation);
+          if (
+            !this.enqueue(async () => {
+              await this.options.onConnected?.();
+            }, generation)
+          ) {
+            overloaded = true;
+            socket.terminate();
+          }
           return;
         }
         if (!ready) return;
@@ -146,12 +166,17 @@ export class MattermostEvents {
         if (!event) return;
         const key = `${event.kind}:${event.post.id}:${event.post.update_at}`;
         if (this.seen.has(key)) return;
+        if (!this.enqueue(() => this.options.onPost(event), generation)) {
+          overloaded = true;
+          socket.terminate();
+          return;
+        }
+        // Rejected events must remain eligible for recovery or redelivery.
         this.seen.add(key);
         if (this.seen.size > 2000) {
           const first = this.seen.values().next().value;
           if (first !== undefined) this.seen.delete(first);
         }
-        this.enqueue(() => this.options.onPost(event), generation);
       } catch (error) {
         this.report(error);
       }

@@ -33,12 +33,26 @@ describe("Mattermost events", () => {
     expect(result?.post.file_ids).toEqual(["file"]);
   });
 
+  it.each(["me", "slack_attachment", "custom_task"])(
+    "delivers authorized posts and edits with non-system type %s",
+    (type) => {
+      for (const kind of ["posted", "post_edited"]) {
+        const event = parsePostEvent(envelope({ ...post, type }, kind), "bot", options);
+        expect(event?.post.type).toBe(type);
+        expect(
+          parsePostEvent(envelope({ ...post, type, user_id: "other" }, kind), "bot", options),
+        ).toBeNull();
+      }
+    },
+  );
+
   it("ignores unauthorized users, channels, own posts, system and deleted posts", () => {
     for (const change of [
       { user_id: "other" },
       { user_id: "bot" },
       { channel_id: "other" },
       { type: "system_join_channel" },
+      { type: "system_generic" },
       { delete_at: 1 },
     ]) {
       expect(parsePostEvent(envelope({ ...post, ...change }), "bot", options)).toBeNull();
@@ -89,6 +103,63 @@ describe("Mattermost events", () => {
       await events.stop();
       expect(server.clients.size).toBeLessThanOrEqual(1);
     } finally {
+      await events.stop();
+      for (const socket of server.clients) socket.terminate();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("bounds delivery during recovery and allows rejected posts after reconnect", async () => {
+    const server = new WebSocketServer({ port: 0 });
+    await once(server, "listening");
+    const address = server.address();
+    if (typeof address === "string" || !address) throw new Error("Missing test server address");
+    let resolveRecovery!: () => void;
+    const recovery = new Promise<void>((resolve) => {
+      resolveRecovery = resolve;
+    });
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => new Response(JSON.stringify({ id: "bot" })));
+    const onConnected = vi.fn().mockImplementation(() => recovery);
+    const onPost = vi.fn().mockResolvedValue(undefined);
+    const onError = vi.fn();
+    const events = new MattermostEvents(
+      new MattermostClient(`http://127.0.0.1:${address.port}`, "secret", fetcher),
+      { ...options, onPost, onConnected, onError },
+    );
+    try {
+      const firstConnection = once(server, "connection");
+      await events.start();
+      const [socket] = await firstConnection;
+      socket.send(JSON.stringify({ event: "hello" }));
+      await vi.waitFor(() => expect(onConnected).toHaveBeenCalledTimes(1));
+      const closed = once(socket, "close");
+      const secondConnection = once(server, "connection");
+      for (let index = 0; index < 2001; index++) {
+        socket.send(envelope({ ...post, id: `post${index}` }));
+      }
+      await closed;
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError.mock.calls[0]?.[0]).toEqual(
+        new Error("Mattermost delivery queue is full; reconnecting requires reconciliation"),
+      );
+      expect(onPost).not.toHaveBeenCalled();
+      resolveRecovery();
+      await vi.waitFor(() => expect(onPost).toHaveBeenCalledTimes(1999));
+      expect(onPost.mock.calls.map(([event]) => event.post.id)).toEqual(
+        Array.from({ length: 1999 }, (_, index) => `post${index}`),
+      );
+      const [second] = await secondConnection;
+      second.send(JSON.stringify({ event: "hello" }));
+      second.send(envelope({ ...post, id: "post0" }));
+      second.send(envelope({ ...post, id: "post1999" }));
+      await vi.waitFor(() => expect(onPost).toHaveBeenCalledTimes(2000));
+      expect(onConnected).toHaveBeenCalledTimes(2);
+      expect(onPost.mock.calls[1999]?.[0].post.id).toBe("post1999");
+      expect(onError).toHaveBeenCalledTimes(1);
+    } finally {
+      resolveRecovery();
       await events.stop();
       for (const socket of server.clients) socket.terminate();
       await new Promise<void>((resolve) => server.close(() => resolve()));
