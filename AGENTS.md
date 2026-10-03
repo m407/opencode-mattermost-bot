@@ -11,7 +11,7 @@ Functional requirements, features, and development status are in [PRODUCT.md](./
 
 ## Technology stack
 
-- **Language:** TypeScript 5.x
+- **Language:** TypeScript 7.0.2 (build and type checking)
 - **Runtime:** Node.js 22.14+
 - **Package manager:** npm
 - **Configuration:** environment variables (`.env`)
@@ -33,6 +33,12 @@ Functional requirements, features, and development status are in [PRODUCT.md](./
 
 - ESLint + Prettier
 - TypeScript strict mode
+
+Build and type-check with `npm run build` and `npm run typecheck`. These scripts
+explicitly run TypeScript 7.0.2 through the `typescript-compiler` npm alias.
+The `typescript` 5.9.3 dependency supplies the JavaScript Compiler API required
+by typescript-eslint; it is not the project build compiler. Do not replace these
+scripts with bare `tsc`, which may resolve to the tooling dependency.
 
 ## Architecture
 

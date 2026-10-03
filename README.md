@@ -542,6 +542,11 @@ Port 4096 is **not** exposed by the bot image; it belongs to the OpenCode server
 
 ### Available Scripts
 
+Build and type checking use TypeScript **7.0.2**, pinned through the
+`typescript-compiler` npm alias. TypeScript 5.9.3 is retained only for the
+JavaScript Compiler API used by ESLint. Use the npm scripts below so compilation
+always selects 7.0.2 instead of the tooling dependency.
+
 | Script                          | Description                          |
 | ------------------------------- | ------------------------------------ |
 | `npm run dev`                   | Build and start (development)        |
