@@ -246,6 +246,7 @@ Agent picker behavior:
 
 Open tasks for upcoming iterations:
 
+- [x] Standalone Mattermost transport adapter (REST, WebSocket, files, and actions); application command integration remains pending
 - [ ] Model search in model switcher
 - [x] Docker runtime support and deployment guide
 - [x] Add a bot settings command with in-chat UI

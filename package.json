@@ -9,7 +9,8 @@
   },
   "exports": {
     ".": "./dist/index.js",
-    "./cli": "./dist/cli.js"
+    "./cli": "./dist/cli.js",
+    "./mattermost": "./dist/mattermost/index.js"
   },
   "files": [
     "dist",

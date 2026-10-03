@@ -11,6 +11,8 @@ OpenCode Telegram Bot is a secure Telegram client for [OpenCode](https://opencod
 
 Run AI coding tasks, monitor progress, switch models, and manage sessions from your phone.
 
+A standalone [Mattermost transport adapter](docs/MATTERMOST_ADAPTER.md) is also available; the OpenCode command handlers are not yet connected to it.
+
 No open ports, no exposed APIs. The bot communicates with your local OpenCode server and the Telegram Bot API only.
 
 Platforms: macOS, Windows, Linux
