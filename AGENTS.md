@@ -31,14 +31,14 @@ Functional requirements, features, and development status are in [PRODUCT.md](./
 
 ### Code quality
 
-- ESLint + Prettier
+- Oxlint + Prettier
 - TypeScript strict mode
 
-Build and type-check with `npm run build` and `npm run typecheck`. These scripts
-explicitly run TypeScript 7.0.2 through the `typescript-compiler` npm alias.
-The `typescript` 5.9.3 dependency supplies the JavaScript Compiler API required
-by typescript-eslint; it is not the project build compiler. Do not replace these
-scripts with bare `tsc`, which may resolve to the tooling dependency.
+Build and type-check with `npm run build` and `npm run typecheck`, using TypeScript
+7.0.2. Run `npm run lint` for Oxlint checks with a zero-warnings policy.
+Oxlint parses TypeScript independently and does not require a legacy Compiler API.
+The rules in `.oxlintrc.json` retain the project's checks, including the ban on
+console calls outside `src/utils/logger.ts`. Prettier handles formatting.
 
 ## Architecture
 
@@ -157,7 +157,7 @@ If your shell runs on Windows:
 ### Code style
 
 - Use TypeScript strict mode.
-- Use ESLint + Prettier.
+- Use Oxlint + Prettier.
 - Prefer `const` over `let`.
 - Use clear names and avoid unnecessary abbreviations.
 - Keep functions small and focused.

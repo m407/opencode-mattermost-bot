@@ -542,10 +542,9 @@ Port 4096 is **not** exposed by the bot image; it belongs to the OpenCode server
 
 ### Available Scripts
 
-Build and type checking use TypeScript **7.0.2**, pinned through the
-`typescript-compiler` npm alias. TypeScript 5.9.3 is retained only for the
-JavaScript Compiler API used by ESLint. Use the npm scripts below so compilation
-always selects 7.0.2 instead of the tooling dependency.
+Build and type checking use TypeScript **7.0.2**. Oxlint runs the lint checks
+without a legacy TypeScript Compiler API dependency; Prettier handles formatting.
+Lint rules are configured in `.oxlintrc.json`, with a zero-warnings policy.
 
 | Script                          | Description                          |
 | ------------------------------- | ------------------------------------ |
@@ -554,7 +553,7 @@ always selects 7.0.2 instead of the tooling dependency.
 | `npm start`                     | Run compiled code                    |
 | `npm run release:prepare`       | Bump version and seed release notes  |
 | `npm run release:notes:preview` | Preview auto-generated release notes |
-| `npm run lint`                  | ESLint check (zero warnings policy)  |
+| `npm run lint`                  | Oxlint check (zero warnings policy)  |
 | `npm run typecheck`             | Type-check `src` and `tests`         |
 | `npm run format`                | Format code with Prettier            |
 | `npm test`                      | Run tests (Vitest)                   |

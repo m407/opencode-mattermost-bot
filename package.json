@@ -22,14 +22,14 @@
     "node": "^22.14.0 || ^23.6.0 || >=24"
   },
   "scripts": {
-    "build": "node node_modules/typescript-compiler/bin/tsc",
+    "build": "tsc",
     "start": "node dist/index.js",
     "dev": "npm run build && npm start",
     "release:prepare": "node scripts/release-prepare.mjs",
     "release:rc": "node scripts/release-prepare.mjs rc",
     "release:notes:preview": "node scripts/release-notes-preview.mjs",
-    "lint": "eslint src tests --max-warnings=0",
-    "typecheck": "node node_modules/typescript-compiler/bin/tsc -p tsconfig.test.json --noEmit",
+    "lint": "oxlint src tests --max-warnings=0",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
@@ -79,15 +79,11 @@
     "@types/node": "^22.20.1",
     "@types/node-fetch": "^2.6.13",
     "@types/ws": "^8.18.1",
-    "@typescript-eslint/eslint-plugin": "^8.53.0",
-    "@typescript-eslint/parser": "^8.53.0",
     "@vitest/coverage-v8": "^4.1.11",
-    "eslint": "^10.8.0",
-    "eslint-config-prettier": "^10.1.8",
+    "oxlint": "1.86.0",
     "prettier": "^3.9.6",
     "tsx": "^4.23.1",
-    "typescript": "5.9.3",
-    "typescript-compiler": "npm:typescript@7.0.2",
+    "typescript": "7.0.2",
     "vitest": "^4.1.11"
   }
 }
