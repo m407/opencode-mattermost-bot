@@ -7,7 +7,7 @@ import { logger } from "../../utils/logger.js";
 const COMMAND_NAME_PATTERN = /^[a-z0-9_]{1,32}$/;
 const COMMAND_LIMIT = 100;
 const EXECUTION_TIMEOUT_MS = 30_000;
-const TELEGRAM_TEXT_LIMIT = 4096;
+const MATTERMOST_TEXT_LIMIT = 4096;
 const TRUNCATION_SUFFIX = "\n… [truncated]";
 const STDERR_TAIL_LIMIT = 1024;
 
@@ -72,12 +72,14 @@ export class LocalCommandRegistry {
       }
       if (names.has(command)) {
         skipped++;
-        logger.warn(`[LocalCommands] Skipped ${filePath}: command collides with a built-in command`);
+        logger.warn(
+          `[LocalCommands] Skipped ${filePath}: command collides with a built-in command`,
+        );
         continue;
       }
       if (options.builtInCommands.length + commands.size >= COMMAND_LIMIT) {
         skipped++;
-        logger.warn(`[LocalCommands] Skipped ${filePath}: Telegram command limit reached`);
+        logger.warn(`[LocalCommands] Skipped ${filePath}: Local command limit reached`);
         continue;
       }
 
@@ -113,11 +115,11 @@ export class LocalCommandRegistry {
   }
 
   allowsWhenBusy(command: string | undefined): boolean {
-    return Boolean(command && this.commands.get(command.slice(1))?.allowWhenBusy);
+    return Boolean(command && this.commands.get(command.replace(/^[!/]/, ""))?.allowWhenBusy);
   }
 
   has(command: string | undefined): boolean {
-    return Boolean(command && this.commands.has(command.slice(1)));
+    return Boolean(command && this.commands.has(command.replace(/^[!/]/, "")));
   }
 
   async execute(command: string): Promise<LocalCommandResult> {
@@ -129,14 +131,23 @@ export class LocalCommandRegistry {
     const child = spawn(
       process.platform === "win32" ? "cmd.exe" : "/bin/sh",
       process.platform === "win32" ? ["/d", "/s", "/c", definition.exec] : ["-c", definition.exec],
-      { cwd: this.workingDirectory, env: process.env, windowsHide: true, detached: process.platform !== "win32" },
+      {
+        cwd: this.workingDirectory,
+        env: process.env,
+        windowsHide: true,
+        detached: process.platform !== "win32",
+      },
     );
     let stdout = "";
     let stderr = "";
     const stdoutDecoder = new StringDecoder("utf8");
     const stderrDecoder = new StringDecoder("utf8");
     child.stdout.on("data", (chunk: Buffer) => {
-      stdout = appendBounded(stdout, stdoutDecoder.write(chunk), TELEGRAM_TEXT_LIMIT + TRUNCATION_SUFFIX.length);
+      stdout = appendBounded(
+        stdout,
+        stdoutDecoder.write(chunk),
+        MATTERMOST_TEXT_LIMIT + TRUNCATION_SUFFIX.length,
+      );
     });
     child.stderr.on("data", (chunk: Buffer) => {
       stderr = appendTail(stderr, stderrDecoder.write(chunk), STDERR_TAIL_LIMIT);
@@ -160,7 +171,9 @@ export class LocalCommandRegistry {
           resolve({ kind: "failed", exitCode: code, stderr });
           return;
         }
-        resolve(stdout.length === 0 ? { kind: "empty" } : { kind: "success", text: truncate(stdout) });
+        resolve(
+          stdout.length === 0 ? { kind: "empty" } : { kind: "success", text: truncate(stdout) },
+        );
       });
     });
   }
@@ -200,8 +213,8 @@ function appendTail(current: string, next: string, limit: number): string {
 }
 
 function truncate(text: string): string {
-  if (text.length <= TELEGRAM_TEXT_LIMIT) return text;
-  let end = TELEGRAM_TEXT_LIMIT - TRUNCATION_SUFFIX.length;
+  if (text.length <= MATTERMOST_TEXT_LIMIT) return text;
+  let end = MATTERMOST_TEXT_LIMIT - TRUNCATION_SUFFIX.length;
   const previous = text.charCodeAt(end - 1);
   const next = text.charCodeAt(end);
   if (previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) end--;
@@ -212,7 +225,9 @@ function terminateProcessTree(pid: number | undefined): void {
   if (!pid) return;
   if (process.platform === "win32") {
     const taskkill = spawn("taskkill", ["/pid", String(pid), "/t", "/f"], { windowsHide: true });
-    taskkill.once("error", (error) => logger.warn(`[LocalCommands] Failed to terminate process tree ${pid}`, error));
+    taskkill.once("error", (error) =>
+      logger.warn(`[LocalCommands] Failed to terminate process tree ${pid}`, error),
+    );
     taskkill.once("close", (code) => {
       if (code !== 0) {
         logger.warn(`[LocalCommands] Process-tree termination exited with code ${code}: ${pid}`);

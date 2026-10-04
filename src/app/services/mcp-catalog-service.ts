@@ -24,7 +24,10 @@ function isMcpStatusName(value: unknown): value is (typeof MCP_STATUS_NAMES)[num
   return typeof value === "string" && MCP_STATUS_NAMES.some((name) => name === value);
 }
 
-function buildMcpStatus(statusValue: (typeof MCP_STATUS_NAMES)[number], errorValue: unknown): McpStatus {
+function buildMcpStatus(
+  statusValue: (typeof MCP_STATUS_NAMES)[number],
+  errorValue: unknown,
+): McpStatus {
   if (statusValue === "failed" || statusValue === "needs_client_registration") {
     // The SDK type requires an error string on these states; a missing one is
     // normalized to an empty string (falsy for display purposes).
@@ -35,9 +38,7 @@ function buildMcpStatus(statusValue: (typeof MCP_STATUS_NAMES)[number], errorVal
 }
 
 type ParsedMcpServerStatus =
-  | { kind: "ok"; status: McpStatus }
-  | { kind: "skip" }
-  | { kind: "invalid" };
+  { kind: "ok"; status: McpStatus } | { kind: "skip" } | { kind: "invalid" };
 
 function parseMcpServerStatus(status: unknown): ParsedMcpServerStatus {
   if (!isRecord(status)) {

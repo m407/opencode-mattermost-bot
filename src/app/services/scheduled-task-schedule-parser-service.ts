@@ -189,7 +189,9 @@ export async function parseTaskSchedule(
 
     sessionId = session.id;
     await registerScheduledTaskSessionIgnore(session.id);
-    logger.debug(`[ScheduledTaskScheduleParser] Created temporary session: sessionId=${session.id}`);
+    logger.debug(
+      `[ScheduledTaskScheduleParser] Created temporary session: sessionId=${session.id}`,
+    );
 
     const promptOptions: {
       sessionID: string;
@@ -217,9 +219,8 @@ export async function parseTaskSchedule(
       promptOptions.variant = model.variant;
     }
 
-    const { data: response, error: promptError } = await opencodeClient.session.prompt(
-      promptOptions,
-    );
+    const { data: response, error: promptError } =
+      await opencodeClient.session.prompt(promptOptions);
 
     if (promptError || !response) {
       throw promptError || new Error("Failed to parse schedule");

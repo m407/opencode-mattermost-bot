@@ -4,8 +4,8 @@ Instructions for AI agents working on this project.
 
 ## About the project
 
-**opencode-telegram-bot** is a Telegram bot that acts as a mobile client for OpenCode.
-It lets a user run and monitor coding tasks on a local machine through Telegram.
+**opencode-mattermost-bot** is a Mattermost bot that acts as a mobile client for OpenCode.
+It lets a user run and monitor coding tasks on a local machine through Mattermost.
 
 Functional requirements, features, and development status are in [PRODUCT.md](./PRODUCT.md).
 
@@ -19,8 +19,8 @@ Functional requirements, features, and development status are in [PRODUCT.md](./
 
 ### Core dependencies
 
-- `grammy` - Telegram Bot API framework (https://grammy.dev/)
-- `@grammyjs/menu` - inline keyboards and menus
+- `ws` - Mattermost WebSocket events
+- Native fetch - Mattermost REST API v4
 - `@opencode-ai/sdk` - official OpenCode Server SDK
 - `dotenv` - environment variable loading
 
@@ -44,10 +44,10 @@ console calls outside `src/utils/logger.ts`. Prettier handles formatting.
 
 ### Main components
 
-1. **Bot Layer** - grammY setup, middleware, commands, callback handlers
+1. **Bot Layer** - Mattermost REST/WebSocket, commands, authenticated action callbacks
 2. **OpenCode Client Layer** - SDK wrapper and SSE event subscription
 3. **State Managers** - session/project/settings/question/permission/model/agent/variant/keyboard/pinned
-4. **Summary Pipeline** - event aggregation and Telegram-friendly formatting
+4. **Summary Pipeline** - event aggregation and Mattermost-friendly formatting
 5. **Process Manager** - local OpenCode server process start, stop, and status
 6. **Runtime/CLI Layer** - runtime mode, config bootstrap, CLI commands
 7. **I18n Layer** - localized bot and CLI strings to multiple languages
@@ -55,8 +55,8 @@ console calls outside `src/utils/logger.ts`. Prettier handles formatting.
 ### Data flow
 
 ```text
-Telegram User
-  -> Telegram Bot (grammY)
+Mattermost User
+  -> Mattermost Bot (API v4)
   -> Managers + OpenCodeClient
   -> OpenCode Server
 
@@ -64,8 +64,8 @@ OpenCode Server
   -> SSE Events
   -> Event Listener
   -> Summary Aggregator / Tool Managers
-  -> Telegram Bot
-  -> Telegram User
+  -> Mattermost Bot
+  -> Mattermost User
 ```
 
 ### State management
@@ -152,7 +152,7 @@ If your shell runs on Windows:
 ### Language
 
 - Code, identifiers, comments, and in-code documentation must be in English.
-- User-facing Telegram messages should be localized through i18n.
+- User-facing Mattermost messages should be localized through i18n.
 
 ### Code style
 
@@ -198,7 +198,7 @@ const COMMAND_DEFINITIONS: BotCommandI18nDefinition[] = [
 Important:
 
 - When adding a command, update `definitions.ts` only.
-- The same source is used for Telegram `setMyCommands` and help/docs.
+- The same source is used for Mattermost `setMyCommands` and help/docs.
 - Do not duplicate command lists elsewhere.
 
 ### Logging

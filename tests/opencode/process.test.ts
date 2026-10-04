@@ -98,7 +98,7 @@ describe("opencode/process", () => {
     }
 
     const originalPath = process.env.PATH;
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-telegram-bot-"));
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-mattermost-bot-"));
     const binDir = path.join(tempRoot, "bin");
     const exePath = path.join(binDir, "opencode.exe");
 
@@ -127,7 +127,7 @@ describe("opencode/process", () => {
     }
 
     const originalPath = process.env.PATH;
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-telegram-bot-"));
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-mattermost-bot-"));
     const binDir = path.join(tempRoot, "bin");
     const exePath = path.join(binDir, "node_modules", "opencode-ai", "bin", "opencode.exe");
     const cmdPath = path.join(binDir, "opencode.cmd");
@@ -158,7 +158,7 @@ describe("opencode/process", () => {
   });
 
   it("reads the exe an npm shim runs", () => {
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-telegram-bot-"));
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-mattermost-bot-"));
     const cmdPath = path.join(tempRoot, "opencode.cmd");
 
     try {
@@ -179,7 +179,7 @@ describe("opencode/process", () => {
     }
 
     const originalPath = process.env.PATH;
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-telegram-bot-"));
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-mattermost-bot-"));
     const binDir = path.join(tempRoot, "bin");
     const v1Exe = path.join(binDir, "node_modules", "opencode-ai", "bin", "opencode.exe");
     const v2Exe = path.join(binDir, "node_modules", "@opencode", "cli", "bin", "opencode.exe");

@@ -57,7 +57,7 @@ export class MattermostApiError extends Error {
   }
 }
 
-/** Transport only: no Telegram types, global settings, or OpenCode session state. */
+/** Transport only: global settings, or OpenCode session state. */
 export class MattermostClient {
   readonly apiUrl: string;
   readonly websocketUrl: string;
@@ -162,10 +162,32 @@ export class MattermostClient {
     return result.file_infos;
   }
 
-  async downloadFile(fileId: string): Promise<Uint8Array> {
-    return new Uint8Array(
-      await (await this.request(`/files/${encodeURIComponent(fileId)}`)).arrayBuffer(),
-    );
+  async pinPost(postId: string): Promise<void> {
+    await this.request(`/posts/${encodeURIComponent(postId)}/pin`, "POST");
+  }
+  async unpinPost(postId: string): Promise<void> {
+    await this.request(`/posts/${encodeURIComponent(postId)}/unpin`, "POST");
+  }
+
+  async downloadFile(fileId: string, maxBytes = 20 * 1024 * 1024): Promise<Uint8Array> {
+    const response = await this.request(`/files/${encodeURIComponent(fileId)}`);
+    if (!response.body) return new Uint8Array();
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        length += value.byteLength;
+        if (length > maxBytes) throw new Error("File exceeds download size limit");
+        chunks.push(value);
+      }
+      return new Uint8Array(Buffer.concat(chunks));
+    } finally {
+      await reader.cancel();
+      reader.releaseLock();
+    }
   }
 
   async getFileInfo(fileId: string): Promise<MattermostFile> {

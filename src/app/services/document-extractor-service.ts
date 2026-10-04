@@ -17,9 +17,7 @@ export async function extractDocument(
   filename: string,
 ): Promise<DocExtractorResult> {
   if (!isDocExtractorConfigured()) {
-    throw new Error(
-      "Document extractor is not configured: DOC_EXTRACTOR_URL is required",
-    );
+    throw new Error("Document extractor is not configured: DOC_EXTRACTOR_URL is required");
   }
 
   const url = config.docExtractor.apiUrl!;

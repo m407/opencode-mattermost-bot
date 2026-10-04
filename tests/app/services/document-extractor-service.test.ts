@@ -17,7 +17,7 @@ const mockDocExtractor = vi.hoisted(() => ({
 vi.mock("../../../src/config.js", () => ({
   config: {
     docExtractor: mockDocExtractor,
-    telegram: { token: "test", allowedUserId: 0, proxyUrl: "" },
+    mattermost: { token: "test", allowedUserId: 0, proxyUrl: "" },
     opencode: {
       apiUrl: "http://localhost:4096",
       username: "opencode",
@@ -111,13 +111,19 @@ describe("extractDocument", () => {
     );
 
     const fileBuffer = Buffer.from("fake-docx-data");
-    await extractDocument(fileBuffer, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "doc.docx");
+    await extractDocument(
+      fileBuffer,
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "doc.docx",
+    );
 
     const formData = defined(fetchSpy.mock.calls[0]?.[1])?.body as FormData;
     const fileField = formData.get("file") as Blob;
 
     expect(fileField).toBeInstanceOf(Blob);
-    expect(fileField.type).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    expect(fileField.type).toBe(
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
   });
 
   it("does not send Authorization header when apiKey is empty", async () => {

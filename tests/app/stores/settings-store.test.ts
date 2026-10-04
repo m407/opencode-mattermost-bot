@@ -10,7 +10,6 @@ import {
   flushSettings,
   getCompactOutputMode,
   getPromptQueueMode,
-  getResponseStreamingMode,
   getSendDiffFileAttachments,
   getPinnedDashboardEnabled,
   getShowAssistantRunFooter,
@@ -21,7 +20,6 @@ import {
   setCompactOutputMode,
   setPromptQueueMode,
   setScheduledTasks,
-  setResponseStreamingMode,
   setSendDiffFileAttachments,
   setShowAssistantRunFooter,
   setShowThinkingContent,
@@ -32,14 +30,14 @@ describe("app/stores/settings-store", () => {
 
   beforeEach(async () => {
     delete process.env.INITIAL_SETTINGS_PRESET;
-    tempHome = await mkdtemp(path.join(os.tmpdir(), "opencode-telegram-settings-store-"));
-    process.env.OPENCODE_TELEGRAM_HOME = tempHome;
+    tempHome = await mkdtemp(path.join(os.tmpdir(), "opencode-mattermost-settings-store-"));
+    process.env.OPENCODE_MATTERMOST_HOME = tempHome;
     setRuntimeMode("installed");
     __resetSettingsForTests();
   });
 
   afterEach(async () => {
-    delete process.env.OPENCODE_TELEGRAM_HOME;
+    delete process.env.OPENCODE_MATTERMOST_HOME;
     __resetSettingsForTests();
     await rm(tempHome, { recursive: true, force: true });
   });
@@ -68,7 +66,10 @@ describe("app/stores/settings-store", () => {
   });
 
   it("loads compact output mode from settings.json", async () => {
-    await writeFile(path.join(tempHome, "settings.json"), JSON.stringify({ compactOutputMode: true }));
+    await writeFile(
+      path.join(tempHome, "settings.json"),
+      JSON.stringify({ compactOutputMode: true }),
+    );
 
     await loadSettings();
 
@@ -192,7 +193,7 @@ describe("app/stores/settings-store", () => {
     vi.resetModules();
     vi.stubEnv(
       "INITIAL_SETTINGS_PRESET",
-      '{"showAssistantRunFooter":false,"compactOutputMode":true,"deleteCompactProgressOnFinish":true,"ttsMode":"auto","responseStreamingMode":"draft","sendDiffFileAttachments":false,"showThinkingContent":false,"promptQueueEnabled":true,"pinnedDashboardEnabled":false}',
+      '{"showAssistantRunFooter":false,"compactOutputMode":true,"deleteCompactProgressOnFinish":true,"ttsMode":"auto","sendDiffFileAttachments":false,"showThinkingContent":false,"promptQueueEnabled":true,"pinnedDashboardEnabled":false}',
     );
 
     const store = await import("../../../src/app/stores/settings-store.js");
@@ -202,7 +203,6 @@ describe("app/stores/settings-store", () => {
     expect(store.getCompactOutputMode()).toBe(true);
     expect(store.getDeleteCompactProgressOnFinish()).toBe(true);
     expect(store.getTtsMode()).toBe("auto");
-    expect(store.getResponseStreamingMode()).toBe("draft");
     expect(store.getSendDiffFileAttachments()).toBe(false);
     expect(store.getShowThinkingContent()).toBe(false);
     expect(store.getPromptQueueMode()).toBe("queue");
@@ -219,7 +219,7 @@ describe("app/stores/settings-store", () => {
     );
     vi.resetModules();
     vi.stubEnv("INITIAL_SETTINGS_PRESET", '{"showAssistantRunFooter":false}');
-    vi.stubEnv("OPENCODE_TELEGRAM_HOME", tempHome);
+    vi.stubEnv("OPENCODE_MATTERMOST_HOME", tempHome);
 
     const store = await import("../../../src/app/stores/settings-store.js");
     await store.loadSettings();
@@ -234,10 +234,12 @@ describe("app/stores/settings-store", () => {
     vi.resetModules();
     vi.stubEnv("INITIAL_SETTINGS_PRESET", '{"unknownKey":true,"compactOutputMode":true}');
 
-    await expect((async () => {
-      const store = await import("../../../src/app/stores/settings-store.js");
-      await store.loadSettings();
-    })()).rejects.toThrow(/unknown key "unknownKey"/);
+    await expect(
+      (async () => {
+        const store = await import("../../../src/app/stores/settings-store.js");
+        await store.loadSettings();
+      })(),
+    ).rejects.toThrow(/unknown key "unknownKey"/);
 
     vi.unstubAllEnvs();
     vi.resetModules();
@@ -247,17 +249,22 @@ describe("app/stores/settings-store", () => {
     vi.resetModules();
     vi.stubEnv("INITIAL_SETTINGS_PRESET", '{"compactOutputMode":"yes"}');
 
-    await expect((async () => {
-      const store = await import("../../../src/app/stores/settings-store.js");
-      await store.loadSettings();
-    })()).rejects.toThrow(/"compactOutputMode" must be a boolean/);
+    await expect(
+      (async () => {
+        const store = await import("../../../src/app/stores/settings-store.js");
+        await store.loadSettings();
+      })(),
+    ).rejects.toThrow(/"compactOutputMode" must be a boolean/);
 
     vi.unstubAllEnvs();
     vi.resetModules();
   });
 
   it("loads thinking content setting from settings.json", async () => {
-    await writeFile(path.join(tempHome, "settings.json"), JSON.stringify({ showThinkingContent: false }));
+    await writeFile(
+      path.join(tempHome, "settings.json"),
+      JSON.stringify({ showThinkingContent: false }),
+    );
 
     await loadSettings();
 
@@ -268,20 +275,6 @@ describe("app/stores/settings-store", () => {
     await loadSettings();
 
     expect(getSendDiffFileAttachments()).toBe(true);
-  });
-
-  it("uses edit response streaming mode by default", async () => {
-    await loadSettings();
-
-    expect(getResponseStreamingMode()).toBe("edit");
-  });
-
-  it("loads response streaming mode from settings.json", async () => {
-    await writeFile(path.join(tempHome, "settings.json"), JSON.stringify({ responseStreamingMode: "draft" }));
-
-    await loadSettings();
-
-    expect(getResponseStreamingMode()).toBe("draft");
   });
 
   it("loads diff file attachment setting from settings.json", async () => {
@@ -569,18 +562,6 @@ describe("app/stores/settings-store", () => {
       await loadSettings();
 
       expect(getScheduledTasks().map((task) => task.id)).toEqual(["task-1"]);
-    });
-  });
-
-  it("persists response streaming mode to settings.json", async () => {
-    await loadSettings();
-
-    setResponseStreamingMode("draft");
-
-    expect(getResponseStreamingMode()).toBe("draft");
-    await vi.waitFor(async () => {
-      const settings = JSON.parse(await readFile(path.join(tempHome, "settings.json"), "utf-8"));
-      expect(settings.responseStreamingMode).toBe("draft");
     });
   });
 });

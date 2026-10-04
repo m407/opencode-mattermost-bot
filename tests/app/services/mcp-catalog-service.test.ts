@@ -42,9 +42,7 @@ describe("app/services/mcp-catalog-service", () => {
       "server-broken": { status: "failed" },
     });
 
-    expect(servers).toEqual([
-      { name: "server-broken", status: { status: "failed", error: "" } },
-    ]);
+    expect(servers).toEqual([{ name: "server-broken", status: { status: "failed", error: "" } }]);
   });
 
   it("skips servers with an unknown status string but keeps the rest", () => {

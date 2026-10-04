@@ -258,7 +258,9 @@ describe("opencode/events", () => {
     globalEventMock
       .mockRejectedValueOnce(new Error("fetch failed"))
       .mockImplementationOnce(async (options: { signal: AbortSignal }) => {
-        return { stream: createOpenStream([{ directory: "D:/repo", payload: event }], options.signal) };
+        return {
+          stream: createOpenStream([{ directory: "D:/repo", payload: event }], options.signal),
+        };
       });
 
     const callback = vi.fn();
@@ -531,9 +533,12 @@ describe("opencode/events", () => {
       expect(subscribeMock).toHaveBeenCalledTimes(1);
     });
 
-    await vi.waitFor(() => {
-      expect(callback).toHaveBeenCalledWith({ directory: "D:/repo", event });
-    }, { timeout: 500 });
+    await vi.waitFor(
+      () => {
+        expect(callback).toHaveBeenCalledWith({ directory: "D:/repo", event });
+      },
+      { timeout: 500 },
+    );
 
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(subscribeMock).toHaveBeenCalledTimes(1);

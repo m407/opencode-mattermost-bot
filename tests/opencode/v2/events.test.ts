@@ -432,7 +432,9 @@ describe("opencode/v2/events", () => {
     function toolStates(result: ReturnType<typeof payloads>) {
       return result
         .filter((item) => item.type === "message.part.updated")
-        .map((item) => (item.properties as { part: { state: Record<string, unknown> } }).part.state);
+        .map(
+          (item) => (item.properties as { part: { state: Record<string, unknown> } }).part.state,
+        );
     }
 
     function launchShell(translate: ReturnType<typeof createV2EventTranslator>) {
@@ -554,7 +556,12 @@ describe("opencode/v2/events", () => {
       expect(result[1]).toMatchObject({ properties: { sessionID: "child-1" } });
       expect(result[2]).toMatchObject({
         properties: {
-          part: { callID: "call-bg", tool: "task", sessionID: SESSION, state: { status: "completed" } },
+          part: {
+            callID: "call-bg",
+            tool: "task",
+            sessionID: SESSION,
+            state: { status: "completed" },
+          },
         },
       });
     });

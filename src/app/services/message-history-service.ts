@@ -138,7 +138,10 @@ export async function loadLatestAssistantMetrics(
   sessionId: string,
   directory: string,
 ): Promise<AssistantMessageMetrics | null> {
-  const { data, error } = await opencodeClient.session.messages({ sessionID: sessionId, directory });
+  const { data, error } = await opencodeClient.session.messages({
+    sessionID: sessionId,
+    directory,
+  });
   if (error || !data) {
     throw error || new Error("No message data received");
   }

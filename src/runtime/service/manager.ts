@@ -95,7 +95,11 @@ async function getProcessCreationTime(pid: number): Promise<Date | null> {
       const { stdout } = await execAsync(
         `powershell -NoProfile -Command "Get-WmiObject Win32_Process -Filter 'ProcessId=${pid}' | Select-Object -ExpandProperty CreationDate"`,
       );
-      const dateStr = stdout.trim().split(/\r?\n/).find((l) => l.trim().length > 0)?.trim();
+      const dateStr = stdout
+        .trim()
+        .split(/\r?\n/)
+        .find((l) => l.trim().length > 0)
+        ?.trim();
       if (!dateStr) {
         return null;
       }
@@ -103,9 +107,7 @@ async function getProcessCreationTime(pid: number): Promise<Date | null> {
       if (!match) {
         return null;
       }
-      return new Date(
-        `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}`,
-      );
+      return new Date(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}`);
     }
 
     const { stdout } = await execAsync(`ps -o lstart= -p ${pid}`);
@@ -199,9 +201,7 @@ export async function getBotServiceStatus(): Promise<BotServiceStatus> {
   }
 
   if (!isProcessAlive(service.pid)) {
-    logger.info(
-      `[Manager] Stale daemon state cleaned up: PID=${service.pid} no longer exists`,
-    );
+    logger.info(`[Manager] Stale daemon state cleaned up: PID=${service.pid} no longer exists`);
     await clearServiceStateFile(stateFilePath);
     return {
       status: "stopped",
@@ -220,8 +220,8 @@ export async function getBotServiceStatus(): Promise<BotServiceStatus> {
   ) {
     logger.warn(
       `[Manager] Stale daemon state detected: PID=${service.pid} exists but was created ` +
-      `at ${processCreationTime.toISOString()} (daemon started at ${service.startedAt}). ` +
-      `The original process died and the PID was reused.`,
+        `at ${processCreationTime.toISOString()} (daemon started at ${service.startedAt}). ` +
+        `The original process died and the PID was reused.`,
     );
     await clearServiceStateFile(stateFilePath);
     return {
@@ -344,7 +344,9 @@ export async function stopBotDaemon(
     }
 
     if (isProcessAlive(pid)) {
-      logger.warn(`[Manager] Daemon stop failed: process PID=${pid} still alive after ${timeoutMs}ms`);
+      logger.warn(
+        `[Manager] Daemon stop failed: process PID=${pid} still alive after ${timeoutMs}ms`,
+      );
       return {
         success: false,
         service: currentStatus.service,

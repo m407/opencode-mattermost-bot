@@ -5,7 +5,6 @@ import type { SessionDirectoryCacheInfo, SessionInfo } from "../types/session.js
 import { cloneScheduledTask, type ScheduledTask } from "../types/scheduled-task.js";
 import type {
   PromptQueueMode,
-  ResponseStreamingMode,
   ScheduledTaskSessionIgnoreInfo,
   Settings,
 } from "../types/settings.js";
@@ -59,10 +58,7 @@ async function readSettingsFile(): Promise<Settings> {
     return await readSettingsFileAt(settingsFilePath);
   } catch (primaryError) {
     if (!isFileNotFound(primaryError)) {
-      logger.warn(
-        `[SettingsManager] Cannot read settings file ${settingsFilePath}:`,
-        primaryError,
-      );
+      logger.warn(`[SettingsManager] Cannot read settings file ${settingsFilePath}:`, primaryError);
     }
 
     try {
@@ -229,16 +225,7 @@ export function setPinnedDashboardEnabled(enabled: boolean): void {
   void writeSettingsFile(currentSettings);
 }
 
-export type { PromptQueueMode, ResponseStreamingMode };
-
-export function getResponseStreamingMode(): ResponseStreamingMode {
-  return currentSettings.responseStreamingMode === "draft" ? "draft" : "edit";
-}
-
-export function setResponseStreamingMode(mode: ResponseStreamingMode): void {
-  currentSettings.responseStreamingMode = mode;
-  void writeSettingsFile(currentSettings);
-}
+export type { PromptQueueMode };
 
 export function getSendDiffFileAttachments(): boolean {
   return currentSettings.sendDiffFileAttachments ?? true;
@@ -299,11 +286,11 @@ export function clearCurrentModel(): void {
   void writeSettingsFile(currentSettings);
 }
 
-export function getPinnedMessageId(): number | undefined {
+export function getPinnedMessageId(): string | undefined {
   return currentSettings.pinnedMessageId;
 }
 
-export function setPinnedMessageId(messageId: number): void {
+export function setPinnedMessageId(messageId: string): void {
   currentSettings.pinnedMessageId = messageId;
   void writeSettingsFile(currentSettings);
 }
@@ -354,7 +341,6 @@ export function __resetSettingsForTests(): void {
 }
 
 const VALID_TTS_MODES: readonly TtsMode[] = ["off", "all", "auto"];
-const VALID_STREAMING_MODES: readonly ResponseStreamingMode[] = ["edit", "draft"];
 
 function applyInitialSettingsPreset(preset: Record<string, unknown>): void {
   const knownKeys = new Set([
@@ -364,7 +350,6 @@ function applyInitialSettingsPreset(preset: Record<string, unknown>): void {
     "showThinkingContent",
     "showAssistantRunFooter",
     "pinnedDashboardEnabled",
-    "responseStreamingMode",
     "sendDiffFileAttachments",
     "promptQueueEnabled",
   ]);
@@ -384,24 +369,10 @@ function applyInitialSettingsPreset(preset: Record<string, unknown>): void {
       if (currentSettings.ttsMode === undefined) {
         currentSettings.ttsMode = value as TtsMode;
       }
-    } else if (key === "responseStreamingMode") {
-      if (
-        typeof value !== "string" ||
-        !VALID_STREAMING_MODES.includes(value as ResponseStreamingMode)
-      ) {
-        throw new Error(
-          `INITIAL_SETTINGS_PRESET: invalid value for "responseStreamingMode"; expected one of ${VALID_STREAMING_MODES.join(", ")}.`,
-        );
-      }
-      if (currentSettings.responseStreamingMode === undefined) {
-        currentSettings.responseStreamingMode = value as ResponseStreamingMode;
-      }
     } else {
       // Boolean settings: compactOutputMode, deleteCompactProgressOnFinish, showThinkingContent, showAssistantRunFooter, pinnedDashboardEnabled, sendDiffFileAttachments, promptQueueEnabled
       if (typeof value !== "boolean") {
-        throw new Error(
-          `INITIAL_SETTINGS_PRESET: "${key}" must be a boolean.`,
-        );
+        throw new Error(`INITIAL_SETTINGS_PRESET: "${key}" must be a boolean.`);
       }
       switch (key) {
         case "compactOutputMode":
@@ -473,4 +444,23 @@ export async function loadSettings(): Promise<void> {
   if (requiresRewrite) {
     void writeSettingsFile(currentSettings);
   }
+}
+
+export function getReplyRootId(): string | undefined {
+  return currentSettings.replyRootId;
+}
+export function setReplyRootId(rootId: string | undefined): void {
+  currentSettings.replyRootId = rootId;
+  void writeSettingsFile(currentSettings);
+}
+
+export function getDeliveredAssistantIds(): string[] {
+  return currentSettings.deliveredAssistantIds ?? [];
+}
+export function markAssistantDelivered(id: string): void {
+  currentSettings.deliveredAssistantIds = [
+    ...getDeliveredAssistantIds().filter((value) => value !== id),
+    id,
+  ].slice(-1000);
+  void writeSettingsFile(currentSettings);
 }

@@ -243,7 +243,9 @@ export async function findWorktreeOwner(folder: string): Promise<string | null> 
       candidates.map((project) => getGitWorktreeContext(project.worktree).catch(() => null)),
     );
     const owner = contexts.find((context) =>
-      context?.worktrees.some((entry) => !entry.isMain && normalizePathKey(entry.path) === folderKey),
+      context?.worktrees.some(
+        (entry) => !entry.isMain && normalizePathKey(entry.path) === folderKey,
+      ),
     );
     return owner?.mainProjectPath ?? null;
   } catch (error) {

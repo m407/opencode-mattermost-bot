@@ -22,9 +22,7 @@ interface PrepareTtsResponseParams {
   synthesizeSpeech?: ((text: string) => Promise<TtsResult>) | undefined;
 }
 
-export type PreparedTtsResponse =
-  | { shouldSend: false }
-  | { shouldSend: true; speech: TtsResult };
+export type PreparedTtsResponse = { shouldSend: false } | { shouldSend: true; speech: TtsResult };
 
 export function isTtsConfigured(): boolean {
   if (config.tts.provider === "google") {
@@ -210,9 +208,7 @@ async function synthesizeWithElevenLabs(text: string): Promise<TtsResult> {
 async function synthesizeWithEdge(text: string): Promise<TtsResult> {
   const voice = config.tts.voice || EDGE_DEFAULT_VOICE;
 
-  logger.debug(
-    `[TTS] Edge: voice=${voice}, chars=${text.length}`,
-  );
+  logger.debug(`[TTS] Edge: voice=${voice}, chars=${text.length}`);
 
   const buffer = await synthesizeWithEdgeTts(text, {
     voice,

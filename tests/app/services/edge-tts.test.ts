@@ -29,9 +29,7 @@ describe("generateSecMsGec", () => {
 
   it("matches the reference vector for a fixed time", () => {
     const token = generateSecMsGec(new Date("2024-01-01T00:00:00Z"));
-    expect(token).toBe(
-      "2AC0A57C1214B9458F8725BB7800499BB594EC29DDA83424BC14661707141F2F",
-    );
+    expect(token).toBe("2AC0A57C1214B9458F8725BB7800499BB594EC29DDA83424BC14661707141F2F");
   });
 
   it("is stable within the same 5-minute window", () => {
@@ -95,9 +93,7 @@ describe("splitTextByByteLength", () => {
     const chunks = splitTextByByteLength(text, 6);
     // The entity "&amp;" must stay whole within a single chunk.
     expect(chunks).toContain("&amp;");
-    expect(
-      chunks.some((c) => c.includes("&amp") && !c.includes("&amp;")),
-    ).toBe(false);
+    expect(chunks.some((c) => c.includes("&amp") && !c.includes("&amp;"))).toBe(false);
     expect(chunks.some((c) => c.includes("amp;") && !c.includes("&amp;"))).toBe(false);
   });
 
@@ -176,9 +172,7 @@ describe("synthesizeWithEdgeTts (WebSocket flow)", () => {
 
   it("sends config + SSML and concatenates binary audio on turn.end", async () => {
     installMockWs();
-    const { synthesizeWithEdgeTts } = await import(
-      "../../../src/app/services/edge-tts.js"
-    );
+    const { synthesizeWithEdgeTts } = await import("../../../src/app/services/edge-tts.js");
 
     const promise = synthesizeWithEdgeTts("Hello world", {
       voice: "en-US-AriaNeural",
@@ -211,9 +205,7 @@ describe("synthesizeWithEdgeTts (WebSocket flow)", () => {
 
   it("opens a separate WebSocket per chunk and concatenates the audio", async () => {
     installMockWs();
-    const { synthesizeWithEdgeTts } = await import(
-      "../../../src/app/services/edge-tts.js"
-    );
+    const { synthesizeWithEdgeTts } = await import("../../../src/app/services/edge-tts.js");
 
     // ~6000 bytes of ASCII splits into two chunks at the 4096-byte limit.
     const text = "word ".repeat(1200);
@@ -241,9 +233,7 @@ describe("synthesizeWithEdgeTts (WebSocket flow)", () => {
 
   it("rejects instead of returning partial audio when a later chunk fails", async () => {
     installMockWs();
-    const { synthesizeWithEdgeTts } = await import(
-      "../../../src/app/services/edge-tts.js"
-    );
+    const { synthesizeWithEdgeTts } = await import("../../../src/app/services/edge-tts.js");
 
     const text = "word ".repeat(1200);
     const promise = synthesizeWithEdgeTts(text, { voice: "en-US-AriaNeural" });
@@ -263,9 +253,7 @@ describe("synthesizeWithEdgeTts (WebSocket flow)", () => {
 
   it("rejects when the connection closes after partial audio but before turn.end", async () => {
     installMockWs();
-    const { synthesizeWithEdgeTts } = await import(
-      "../../../src/app/services/edge-tts.js"
-    );
+    const { synthesizeWithEdgeTts } = await import("../../../src/app/services/edge-tts.js");
 
     const promise = synthesizeWithEdgeTts("Hello", { voice: "en-US-AriaNeural" });
     await Promise.resolve();
@@ -278,9 +266,7 @@ describe("synthesizeWithEdgeTts (WebSocket flow)", () => {
 
   it("rejects when no audio is received before turn.end", async () => {
     installMockWs();
-    const { synthesizeWithEdgeTts } = await import(
-      "../../../src/app/services/edge-tts.js"
-    );
+    const { synthesizeWithEdgeTts } = await import("../../../src/app/services/edge-tts.js");
 
     const promise = synthesizeWithEdgeTts("Hello", { voice: "en-US-AriaNeural" });
     await Promise.resolve();
@@ -292,9 +278,7 @@ describe("synthesizeWithEdgeTts (WebSocket flow)", () => {
 
   it("rejects on connection close before audio", async () => {
     installMockWs();
-    const { synthesizeWithEdgeTts } = await import(
-      "../../../src/app/services/edge-tts.js"
-    );
+    const { synthesizeWithEdgeTts } = await import("../../../src/app/services/edge-tts.js");
 
     const promise = synthesizeWithEdgeTts("Hello", { voice: "en-US-AriaNeural" });
     await Promise.resolve();
@@ -306,9 +290,7 @@ describe("synthesizeWithEdgeTts (WebSocket flow)", () => {
 
   it("escapes XML-special characters in the voice attribute", async () => {
     installMockWs();
-    const { synthesizeWithEdgeTts } = await import(
-      "../../../src/app/services/edge-tts.js"
-    );
+    const { synthesizeWithEdgeTts } = await import("../../../src/app/services/edge-tts.js");
 
     void synthesizeWithEdgeTts("Hello", { voice: "en-US-O'Brien&Co" }).catch(() => {});
     await Promise.resolve();
@@ -320,17 +302,20 @@ describe("synthesizeWithEdgeTts (WebSocket flow)", () => {
 
   it("retries once on a fresh connection after an HTTP 403 upgrade failure", async () => {
     installMockWs();
-    const { synthesizeWithEdgeTts } = await import(
-      "../../../src/app/services/edge-tts.js"
-    );
+    const { synthesizeWithEdgeTts } = await import("../../../src/app/services/edge-tts.js");
 
     const promise = synthesizeWithEdgeTts("Hello", { voice: "en-US-AriaNeural" });
     await flush();
 
-    emitOn(defined(sockets[0]), "unexpected-response", {}, {
-      statusCode: 403,
-      headers: { date: new Date().toUTCString() },
-    });
+    emitOn(
+      defined(sockets[0]),
+      "unexpected-response",
+      {},
+      {
+        statusCode: 403,
+        headers: { date: new Date().toUTCString() },
+      },
+    );
     await flush();
 
     expect(sockets).toHaveLength(2);
@@ -344,9 +329,7 @@ describe("synthesizeWithEdgeTts (WebSocket flow)", () => {
 
   it("bounds the whole synthesis by one shared deadline across chunks", async () => {
     installMockWs();
-    const { synthesizeWithEdgeTts } = await import(
-      "../../../src/app/services/edge-tts.js"
-    );
+    const { synthesizeWithEdgeTts } = await import("../../../src/app/services/edge-tts.js");
 
     const text = "word ".repeat(1200);
     const promise = synthesizeWithEdgeTts(text, {
@@ -372,9 +355,7 @@ describe("synthesizeWithEdgeTts (WebSocket flow)", () => {
 
   it("rejects on WebSocket error", async () => {
     installMockWs();
-    const { synthesizeWithEdgeTts } = await import(
-      "../../../src/app/services/edge-tts.js"
-    );
+    const { synthesizeWithEdgeTts } = await import("../../../src/app/services/edge-tts.js");
 
     const promise = synthesizeWithEdgeTts("Hello", { voice: "en-US-AriaNeural" });
     await Promise.resolve();

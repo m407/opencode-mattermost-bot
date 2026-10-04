@@ -27,7 +27,12 @@ describe("loadLatestAssistantMetrics", () => {
     });
 
     expect(await loadLatestAssistantMetrics("session", "directory")).toEqual({
-      input: 100, output: 12, reasoning: 3, cacheRead: 8, cacheWrite: 4, cost: 0.123,
+      input: 100,
+      output: 12,
+      reasoning: 3,
+      cacheRead: 8,
+      cacheWrite: 4,
+      cost: 0.123,
     });
     expect(messages).toHaveBeenCalledWith({ sessionID: "session", directory: "directory" });
   });

@@ -194,10 +194,7 @@ describe("app/services/scheduled-task-schedule-parser-service", () => {
 
     await parseTaskSchedule("every 5 minutes", "D:/Projects/Repo");
 
-    const promptOptions = mocked.sessionPromptMock.mock.calls[0]?.[0] as Record<
-      string,
-      unknown
-    >;
+    const promptOptions = mocked.sessionPromptMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(promptOptions.model).toBeUndefined();
     expect(promptOptions.variant).toBeUndefined();
   });

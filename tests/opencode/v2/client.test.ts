@@ -37,10 +37,7 @@ vi.mock("@opencode/client", () => ({
   },
 }));
 
-import {
-  createV2OpencodeClient,
-  type V2ClientExtension,
-} from "../../../src/opencode/v2/client.js";
+import { createV2OpencodeClient, type V2ClientExtension } from "../../../src/opencode/v2/client.js";
 
 const SESSION = {
   id: "ses-1",

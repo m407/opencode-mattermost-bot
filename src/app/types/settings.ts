@@ -3,8 +3,6 @@ import type { ProjectInfo } from "./project.js";
 import type { SessionDirectoryCacheInfo, SessionInfo } from "./session.js";
 import type { ScheduledTask } from "./scheduled-task.js";
 
-export type ResponseStreamingMode = "edit" | "draft";
-
 export type PromptQueueMode = "off" | "queue" | "steer";
 
 export interface ScheduledTaskSessionIgnoreInfo {
@@ -13,18 +11,19 @@ export interface ScheduledTaskSessionIgnoreInfo {
 }
 
 export interface Settings {
+  deliveredAssistantIds?: string[] | undefined;
+  replyRootId?: string | undefined;
   currentProject?: ProjectInfo | undefined;
   currentSession?: SessionInfo | undefined;
   currentAgent?: string | undefined;
   currentModel?: ModelInfo | undefined;
-  pinnedMessageId?: number | undefined;
+  pinnedMessageId?: string | undefined;
   ttsMode?: "off" | "all" | "auto" | undefined;
   compactOutputMode?: boolean | undefined;
   deleteCompactProgressOnFinish?: boolean | undefined;
   showThinkingContent?: boolean | undefined;
   showAssistantRunFooter?: boolean | undefined;
   pinnedDashboardEnabled?: boolean | undefined;
-  responseStreamingMode?: ResponseStreamingMode | undefined;
   sendDiffFileAttachments?: boolean | undefined;
   promptQueueEnabled?: boolean | undefined;
   promptQueueMode?: PromptQueueMode | undefined;

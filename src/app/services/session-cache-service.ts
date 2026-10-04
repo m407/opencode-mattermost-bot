@@ -169,9 +169,7 @@ function upsertDirectory(worktree: string, lastUpdated: number): boolean {
   return true;
 }
 
-function buildListParams(options?: {
-  force?: boolean;
-}): { limit: number; start?: number } {
+function buildListParams(options?: { force?: boolean }): { limit: number; start?: number } {
   if (options?.force || cacheData.lastSyncedUpdatedAt === 0) {
     return { limit: INITIAL_WARMUP_LIMIT };
   }

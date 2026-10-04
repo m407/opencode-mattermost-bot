@@ -43,7 +43,12 @@ export async function loadRecentSessions(limit: number): Promise<RecentSession[]
       sessionID: attached.id,
       directory: attached.directory,
     });
-    if (!error && data && !data.parentID && (await checkFolderPresence(data.directory)) !== "missing") {
+    if (
+      !error &&
+      data &&
+      !data.parentID &&
+      (await checkFolderPresence(data.directory)) !== "missing"
+    ) {
       sessions.splice(limit - 1, 1, data);
     }
   }
@@ -56,39 +61,51 @@ export async function loadRecentSessions(limit: number): Promise<RecentSession[]
   }
 
   const statuses = new Map<string, RecentStatus>();
-  await Promise.all([...byDirectory].map(async ([directory, group]) => {
-    const [statusResult, questionResult, permissionResult] = await Promise.all([
-      opencodeClient.session.status({ directory }),
-      opencodeClient.question.list({ directory }),
-      opencodeClient.permission.list({ directory }),
-    ]);
-    // A failed lookup counts as "nothing found" for its own part only, so one bad folder never fails the list.
-    const warnFailed = (lookup: string, error: unknown) =>
-      logger.warn(`[Recent] Failed to load ${lookup} for ${directory}; showing it without them:`, error);
-    if (statusResult.error || !statusResult.data) warnFailed("run statuses", statusResult.error);
-    if (questionResult.error || !questionResult.data) warnFailed("pending questions", questionResult.error);
-    if (permissionResult.error || !permissionResult.data) warnFailed("pending permissions", permissionResult.error);
+  await Promise.all(
+    [...byDirectory].map(async ([directory, group]) => {
+      const [statusResult, questionResult, permissionResult] = await Promise.all([
+        opencodeClient.session.status({ directory }),
+        opencodeClient.question.list({ directory }),
+        opencodeClient.permission.list({ directory }),
+      ]);
+      // A failed lookup counts as "nothing found" for its own part only, so one bad folder never fails the list.
+      const warnFailed = (lookup: string, error: unknown) =>
+        logger.warn(
+          `[Recent] Failed to load ${lookup} for ${directory}; showing it without them:`,
+          error,
+        );
+      if (statusResult.error || !statusResult.data) warnFailed("run statuses", statusResult.error);
+      if (questionResult.error || !questionResult.data)
+        warnFailed("pending questions", questionResult.error);
+      if (permissionResult.error || !permissionResult.data)
+        warnFailed("pending permissions", permissionResult.error);
 
-    const roots = new Set(group.map((session) => session.id));
-    // A subagent's pending request marks the root it runs under.
-    const questions = new Set<string>();
-    for (const request of questionResult.data ?? []) {
-      const chain = await resolveSessionParentChain(request.sessionID, directory, roots);
-      if (chain) questions.add(chain.root);
-    }
-    const permissions = new Set<string>();
-    for (const request of permissionResult.data ?? []) {
-      const chain = await resolveSessionParentChain(request.sessionID, directory, roots);
-      if (chain) permissions.add(chain.root);
-    }
-    for (const session of group) {
-      const run = statusResult.data?.[session.id]?.type;
-      statuses.set(session.id, questions.has(session.id)
-        ? "question"
-        : permissions.has(session.id)
-          ? "permission"
-          : run === "busy" || run === "retry" ? "running" : "idle");
-    }
-  }));
+      const roots = new Set(group.map((session) => session.id));
+      // A subagent's pending request marks the root it runs under.
+      const questions = new Set<string>();
+      for (const request of questionResult.data ?? []) {
+        const chain = await resolveSessionParentChain(request.sessionID, directory, roots);
+        if (chain) questions.add(chain.root);
+      }
+      const permissions = new Set<string>();
+      for (const request of permissionResult.data ?? []) {
+        const chain = await resolveSessionParentChain(request.sessionID, directory, roots);
+        if (chain) permissions.add(chain.root);
+      }
+      for (const session of group) {
+        const run = statusResult.data?.[session.id]?.type;
+        statuses.set(
+          session.id,
+          questions.has(session.id)
+            ? "question"
+            : permissions.has(session.id)
+              ? "permission"
+              : run === "busy" || run === "retry"
+                ? "running"
+                : "idle",
+        );
+      }
+    }),
+  );
   return sessions.map((session) => ({ session, status: statuses.get(session.id) ?? "idle" }));
 }

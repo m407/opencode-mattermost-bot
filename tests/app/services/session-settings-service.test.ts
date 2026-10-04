@@ -78,9 +78,7 @@ describe("app/services/session-settings-service", () => {
       makeSession({ model: { providerID: "opencode-go", id: "deepseek-v4-flash" } }),
     );
 
-    expect(selectModel).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "default" }),
-    );
+    expect(selectModel).toHaveBeenCalledWith(expect.objectContaining({ variant: "default" }));
   });
 
   it("leaves the current settings untouched for a session that was never prompted", async () => {
