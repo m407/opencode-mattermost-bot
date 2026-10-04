@@ -11,12 +11,13 @@ permissions:
   id-token: write
 
 concurrency:
-  group: publish-${{ github.workflow }}-${{ github.ref }}
+  group: publish-npm
   cancel-in-progress: false
 
 jobs:
   publish:
-    name: Publish from main version bump
+    name: Publish npm package and GitHub release
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -32,6 +33,9 @@ jobs:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
           cache: npm
+
+      - name: Install npm with Trusted Publishing support
+        run: npm install --global npm@11
 
       - name: Show tool versions
         run: |
@@ -64,53 +68,67 @@ jobs:
             exit 1
           fi
 
-          git fetch --tags --force
           TAG_NAME="v$CURRENT_VERSION"
-          if git tag -l "$TAG_NAME" | grep -q "$TAG_NAME"; then
-            echo "Tag already exists: $TAG_NAME"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          if git show-ref --verify --quiet "refs/tags/$TAG_NAME"; then
             echo "should_release=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "Release candidate detected: tag is missing for current package version"
-
-          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
-          echo "should_release=true" >> "$GITHUB_OUTPUT"
+      - name: Check npm registry
+        id: registry
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const { name, version } = JSON.parse(readFileSync('package.json', 'utf8'));
+          const url = `https://registry.npmjs.org/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
+          const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+          if (response.status !== 404 && !response.ok) {
+            throw new Error(`npm registry returned HTTP ${response.status}; refusing to assume the version is unpublished`);
+          }
+          const shouldPublish = response.status === 404;
+          if (!shouldPublish) {
+            const published = await response.json();
+            if (published.name !== name || published.version !== version) {
+              throw new Error('Unexpected npm package metadata');
+            }
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `should_publish=${shouldPublish}\n`);
+          process.stdout.write(`${name}@${version}: ${shouldPublish ? 'ready to publish' : 'already published'}\n`);
+          NODE
 
       - name: No release needed
-        if: steps.determine.outputs.should_release != 'true'
-        run: 'echo "Skipping publish: no eligible version bump detected"'
-
-      - name: Ensure npm version is not already published
-        if: steps.determine.outputs.should_release == 'true'
-        run: |
-          set -euo pipefail
-          PACKAGE_NAME="${{ steps.determine.outputs.package_name }}"
-          CURRENT_VERSION="${{ steps.determine.outputs.current_version }}"
-          if npm view "$PACKAGE_NAME@$CURRENT_VERSION" version >/dev/null 2>&1; then
-            echo "Version already exists on npm: $PACKAGE_NAME@$CURRENT_VERSION"
-            exit 1
-          fi
+        if: steps.determine.outputs.should_release != 'true' && steps.registry.outputs.should_publish != 'true'
+        run: 'echo "Package version and Git tag already exist; nothing to publish"'
 
       - name: Install dependencies
-        if: steps.determine.outputs.should_release == 'true'
+        if: steps.determine.outputs.should_release == 'true' || steps.registry.outputs.should_publish == 'true'
         run: npm ci
 
       - name: Lint
-        if: steps.determine.outputs.should_release == 'true'
+        if: steps.determine.outputs.should_release == 'true' || steps.registry.outputs.should_publish == 'true'
         run: npm run lint
 
       - name: Typecheck
-        if: steps.determine.outputs.should_release == 'true'
+        if: steps.determine.outputs.should_release == 'true' || steps.registry.outputs.should_publish == 'true'
         run: npm run typecheck
 
       - name: Build
-        if: steps.determine.outputs.should_release == 'true'
+        if: steps.determine.outputs.should_release == 'true' || steps.registry.outputs.should_publish == 'true'
         run: npm run build
 
       - name: Test
-        if: steps.determine.outputs.should_release == 'true'
+        if: steps.determine.outputs.should_release == 'true' || steps.registry.outputs.should_publish == 'true'
         run: npm run test
+
+      - name: Runtime smoke test
+        if: steps.determine.outputs.should_release == 'true' || steps.registry.outputs.should_publish == 'true'
+        run: node scripts/smoke-runtime.mjs
+
+      - name: Check package contents
+        if: steps.registry.outputs.should_publish == 'true'
+        run: npm pack --dry-run
 
       - name: Generate release notes
         if: steps.determine.outputs.should_release == 'true'
@@ -137,7 +155,10 @@ jobs:
           echo "body_file=$BODY_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Publish to npm
-        if: steps.determine.outputs.should_release == 'true'
+        if: steps.registry.outputs.should_publish == 'true'
+        env:
+          # Optional for initial publication; omit after configuring npm Trusted Publishing.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ "${{ github.event.repository.private }}" = "true" ]; then
             echo "Private repository detected: publishing without provenance"
