@@ -3,13 +3,6 @@ FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
-# Install only native build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copy package files first for better layer caching
 COPY package.json package-lock.json ./
 

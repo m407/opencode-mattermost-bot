@@ -1,6 +1,6 @@
 # Product behavior
 
-OpenCode Mattermost Bot is a single-user client for an OpenCode V1 or V2 server. One user and one channel are explicitly allowed. Each submitted prompt retains its Mattermost thread for output.
+OpenCode Mattermost Bot is a single-user client for an OpenCode V2 server. One user and one channel are explicitly allowed. Each submitted prompt retains its Mattermost thread for output.
 
 The application provides project/session navigation, model/agent/variant selection, streamed assistant text, tool and thinking output, permissions and questions, file and audio input/output, context compaction, MCP toggles, custom commands, local server management and scheduled tasks. Settings, selected session, scheduled tasks and delivered assistant IDs persist in the runtime home.
 

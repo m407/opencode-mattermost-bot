@@ -58,7 +58,6 @@ export const mattermost = {
   "mattermost.bot.the_project_is_not_a_git_worktree": "The project is not a Git worktree.",
   "mattermost.bot.worktrees": "Worktrees",
   "mattermost.bot.session_compacted": "Session compacted.",
-  "mattermost.bot.config_reload_requires_opencode_v": "Config reload requires OpenCode V2.",
   "mattermost.bot.opencode_configuration_reloaded": "OpenCode configuration reloaded.",
   "mattermost.bot.process_management_is_only_available_for_a_local_openco":
     "Process management is only available for a local OpenCode server.",

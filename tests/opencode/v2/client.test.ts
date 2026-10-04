@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { OpencodeClient } from "@opencode-ai/sdk/v2";
+import type { OpencodeClient } from "../../../src/opencode/v2/client.js";
 import { isExpectedOpencodeUnavailableError } from "../../../src/utils/opencode-error.js";
 
 const fake = vi.hoisted(() => ({
@@ -37,7 +37,7 @@ vi.mock("@opencode/client", () => ({
   },
 }));
 
-import { createV2OpencodeClient, type V2ClientExtension } from "../../../src/opencode/v2/client.js";
+import { createV2OpencodeClient } from "../../../src/opencode/v2/client.js";
 
 const SESSION = {
   id: "ses-1",
@@ -95,7 +95,17 @@ describe("opencode/v2/client", () => {
     expect(result).toEqual({ data: { healthy: true, version: "2.0.16" }, error: undefined });
   });
 
-  it("returns a missing session as the V1 not-found error", async () => {
+  it.each([{ version: "1.18.32", pid: 1 }, { version: "2.0.16" }, "<!doctype html>"])(
+    "rejects unsupported health response %j",
+    async (response) => {
+      fake.client.server.info.mockResolvedValue(response);
+      const result = await createClient().global.health();
+      expect(result.data).toBeUndefined();
+      expect(result.error).toBeInstanceOf(Error);
+    },
+  );
+
+  it("returns a missing session as the domain not-found error", async () => {
     // The shape the real client throws for a declared 404: an Error named after the body's tag.
     fake.client.session.get.mockRejectedValue(
       Object.assign(new Error("Session not found: ses-x"), {
@@ -112,7 +122,7 @@ describe("opencode/v2/client", () => {
     });
   });
 
-  it("returns an undeclared 404 as the V1 not-found error", async () => {
+  it("returns an undeclared 404 as the domain not-found error", async () => {
     fake.client.session.get.mockRejectedValue(
       Object.assign(new Error("UnexpectedStatus: 404"), {
         name: "ClientError",
@@ -179,7 +189,7 @@ describe("opencode/v2/client", () => {
 
   it("sends a prompt with the requested delivery and returns the inbox id it waits under", async () => {
     fake.client.session.prompt.mockResolvedValue({ id: "msg-inbox-1" });
-    const client = createClient() as unknown as V2ClientExtension;
+    const client = createClient();
 
     const result = await client.session.promptAsync({
       sessionID: "ses-1",
@@ -200,7 +210,7 @@ describe("opencode/v2/client", () => {
       { id: "msg-a", type: "user", delivery: "steer" },
       { id: "msg-b", type: "user", delivery: "queue" },
     ]);
-    const client = createClient() as unknown as V2ClientExtension;
+    const client = createClient();
 
     const result = await client.session.inbox.list({ sessionID: "ses-1" });
 
@@ -210,7 +220,7 @@ describe("opencode/v2/client", () => {
 
   it("cancels a waiting inbox message", async () => {
     fake.client.session.inbox.cancel.mockResolvedValue(undefined);
-    const client = createClient() as unknown as V2ClientExtension;
+    const client = createClient();
 
     const result = await client.session.inbox.cancel({ sessionID: "ses-1", inboxID: "msg-a" });
 
@@ -223,7 +233,7 @@ describe("opencode/v2/client", () => {
 
   it("reloads the server configuration", async () => {
     fake.client.location.reload.mockResolvedValue(undefined);
-    const client = createClient() as unknown as V2ClientExtension;
+    const client = createClient();
 
     const result = await client.location.reload();
 
@@ -239,7 +249,7 @@ describe("opencode/v2/client", () => {
         { path: "README.md", type: "file" },
       ],
     });
-    const client = createClient() as unknown as V2ClientExtension;
+    const client = createClient();
 
     const result = await client.file.list({ path: "D:\\Projects" });
 
@@ -254,7 +264,7 @@ describe("opencode/v2/client", () => {
       cause: { status: 500 },
     });
     fake.client.file.list.mockRejectedValue(error);
-    const client = createClient() as unknown as V2ClientExtension;
+    const client = createClient();
 
     const result = await client.file.list({ path: "D:\\Gone" });
 
@@ -264,7 +274,7 @@ describe("opencode/v2/client", () => {
   it("reports a rejected reload as the call's error", async () => {
     const error = new Error("Invalid config");
     fake.client.location.reload.mockRejectedValue(error);
-    const client = createClient() as unknown as V2ClientExtension;
+    const client = createClient();
 
     const result = await client.location.reload();
 
@@ -383,7 +393,7 @@ describe("opencode/v2/client", () => {
     });
   });
 
-  it("maps active sessions into the V1 busy status map", async () => {
+  it("maps active sessions into the domain busy status map", async () => {
     fake.client.session.active.mockResolvedValue({ "ses-1": { type: "running" } });
 
     const result = await createClient().session.status({ directory: "D:/repo" });
@@ -391,7 +401,7 @@ describe("opencode/v2/client", () => {
     expect(result.data).toEqual({ "ses-1": { type: "busy" } });
   });
 
-  it("serves the translated stream on both event entry points", async () => {
+  it("serves the translated global event stream", async () => {
     fake.client.event.subscribe.mockImplementation(() =>
       (async function* () {
         yield { id: "evt-1", type: "server.connected", data: {} };
@@ -403,22 +413,11 @@ describe("opencode/v2/client", () => {
         };
       })(),
     );
-    const client = createClient() as unknown as {
-      global: {
-        event: () => Promise<{
-          stream: AsyncIterable<{ directory?: string; payload: { type: string } }>;
-        }>;
-      };
-      event: { subscribe: () => Promise<{ stream: AsyncIterable<{ type: string }> }> };
-    };
+    const client = createClient();
 
     const globalEvents = [];
     for await (const envelope of (await client.global.event()).stream) {
       globalEvents.push(envelope);
-    }
-    const projectEvents = [];
-    for await (const item of (await client.event.subscribe()).stream) {
-      projectEvents.push(item.type);
     }
 
     expect(globalEvents.map((envelope) => envelope.payload.type)).toEqual([
@@ -426,7 +425,6 @@ describe("opencode/v2/client", () => {
       "session.status",
     ]);
     expect(globalEvents[1]?.directory).toBe("D:/repo");
-    expect(projectEvents).toEqual(["server.connected", "session.status"]);
   });
 
   it("shows the pickup of a prompt queued before the event stream reconnected", async () => {

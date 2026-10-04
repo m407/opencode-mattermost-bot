@@ -1,7 +1,7 @@
 import { logger } from "../utils/logger.js";
-import { findRegisteredOpencodeServerUrl, opencodeServerVersion } from "./client.js";
+import { findRegisteredOpencodeServerUrl } from "./client.js";
 import {
-  getOpencodeApiVersion,
+  isSupportedOpencodeVersion,
   readLocalOpencodeVersion,
   type LocalOpencodeTarget,
 } from "./process.js";
@@ -28,10 +28,6 @@ async function isBlockedByRegisteredServer(
   target: LocalOpencodeTarget,
   mode: ProblemReportMode,
 ): Promise<boolean> {
-  if (opencodeServerVersion !== "v2") {
-    return false;
-  }
-
   const registeredUrl = await findRegisteredOpencodeServerUrl();
   if (!registeredUrl || getUrlPort(registeredUrl) === target.port) {
     return false;
@@ -52,14 +48,13 @@ async function isBlockedByExecutableVersion(mode: ProblemReportMode): Promise<bo
     return false;
   }
 
-  const executableApiVersion = getOpencodeApiVersion(executableVersion);
-  if (executableApiVersion === opencodeServerVersion) {
+  if (isSupportedOpencodeVersion(executableVersion)) {
     return false;
   }
 
   reportOpencodeProblem(`executable:${executableVersion}`, mode, () =>
     logger.error(
-      `[OpenCode] Server version mismatch: OPENCODE_SERVER_VERSION=${opencodeServerVersion}, but the local opencode executable is OpenCode ${executableVersion} (API ${executableApiVersion}). Set OPENCODE_SERVER_VERSION=${executableApiVersion} and restart the bot, or make an OpenCode ${opencodeServerVersion} opencode executable the first one on PATH.`,
+      `[OpenCode] Local executable is OpenCode ${executableVersion}; only OpenCode 2.x is supported. Install @opencode/cli and make it the first opencode executable on PATH.`,
     ),
   );
   return true;

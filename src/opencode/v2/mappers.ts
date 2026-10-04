@@ -7,7 +7,6 @@ import type {
   GlobalSession,
   McpStatus,
   Message,
-  Model,
   Part,
   PermissionRequest,
   Project,
@@ -18,7 +17,7 @@ import type {
   TextPartInput,
   ToolState,
   UserMessage,
-} from "@opencode-ai/sdk/v2";
+} from "../types.js";
 import type {
   AgentInfo,
   FileDiffInfo,
@@ -39,24 +38,24 @@ import { isRecord } from "../../utils/type-guards.js";
 
 type JsonRecord = Record<string, unknown>;
 
-export interface V1MessageWithParts {
+export interface MessageWithParts {
   info: Message;
   parts: Part[];
 }
 
-/** V2 tool ids that the bot's formatters know under their V1 names. */
-const V1_TOOL_NAMES: Record<string, string> = {
+/** V2 tool ids that the bot's formatters know under their bot names. */
+const TOOL_NAMES: Record<string, string> = {
   shell: "bash",
   subagent: "task",
   patch: "apply_patch",
 };
 
-export function toV1ToolName(name: string): string {
-  return V1_TOOL_NAMES[name] ?? name;
+export function toToolName(name: string): string {
+  return TOOL_NAMES[name] ?? name;
 }
 
-/** Adds the V1 input field names the formatters read, keeping the V2 ones. */
-export function toV1ToolInput(tool: string, input: JsonRecord): JsonRecord {
+/** Adds the bot input field names the formatters read, keeping the V2 ones. */
+export function toToolInput(tool: string, input: JsonRecord): JsonRecord {
   const result: JsonRecord = { ...input };
   if (typeof result.filePath !== "string" && typeof result.path === "string") {
     result.filePath = result.path;
@@ -76,8 +75,8 @@ export function toV1ToolInput(tool: string, input: JsonRecord): JsonRecord {
   return result;
 }
 
-/** Adds the V1 file-change field names the formatters read, keeping the V2 ones. */
-export function toV1ToolMetadata(tool: string, metadata: JsonRecord): JsonRecord {
+/** Adds the bot file-change field names the formatters read, keeping the V2 ones. */
+export function toToolMetadata(tool: string, metadata: JsonRecord): JsonRecord {
   if (!Array.isArray(metadata.files)) {
     return metadata;
   }
@@ -106,7 +105,7 @@ export function toV1ToolMetadata(tool: string, metadata: JsonRecord): JsonRecord
       ...metadata,
       files: files.map((file) => {
         // V2 reports the path relative to the project, and the file's diff under `patch`,
-        // one of the two keys V1 entries use
+        // one of the two keys bot entries use
         if (typeof file.filePath === "string" || typeof file.file !== "string") {
           return file;
         }
@@ -130,7 +129,7 @@ export function toolContentText(
     .join("\n");
 }
 
-export function toV1ErrorPayload(
+export function toErrorPayload(
   error: SessionStructuredError | undefined,
 ): NonNullable<AssistantMessage["error"]> {
   return {
@@ -139,7 +138,7 @@ export function toV1ErrorPayload(
   };
 }
 
-export function toV1Session(session: SessionInfo): Session {
+export function toSession(session: SessionInfo): Session {
   return {
     id: session.id,
     slug: session.id,
@@ -160,11 +159,11 @@ export function toV1Session(session: SessionInfo): Session {
   };
 }
 
-export function toV1GlobalSession(session: SessionInfo): GlobalSession {
-  return { ...toV1Session(session), project: null };
+export function toGlobalSession(session: SessionInfo): GlobalSession {
+  return { ...toSession(session), project: null };
 }
 
-export function toV1Project(project: V2Project): Project {
+export function toProject(project: V2Project): Project {
   return {
     id: project.id,
     worktree: project.canonical,
@@ -174,7 +173,7 @@ export function toV1Project(project: V2Project): Project {
   };
 }
 
-function toV1UserMessage(message: SessionMessageUser, sessionID: string): V1MessageWithParts {
+function toUserMessage(message: SessionMessageUser, sessionID: string): MessageWithParts {
   const info: UserMessage = {
     id: message.id,
     sessionID,
@@ -206,7 +205,7 @@ function toV1UserMessage(message: SessionMessageUser, sessionID: string): V1Mess
   return { info, parts };
 }
 
-function toV1ToolState(
+function toToolState(
   tool: Extract<SessionMessageAssistant["content"][number], { type: "tool" }>,
   toolName: string,
 ): ToolState {
@@ -216,8 +215,8 @@ function toV1ToolState(
   if (state.status === "streaming") {
     return { status: "pending", input: {}, raw: state.input };
   }
-  const input = toV1ToolInput(toolName, state.input);
-  const metadata = state.metadata ? toV1ToolMetadata(toolName, state.metadata) : undefined;
+  const input = toToolInput(toolName, state.input);
+  const metadata = state.metadata ? toToolMetadata(toolName, state.metadata) : undefined;
   if (state.status === "running") {
     return { status: "running", input, ...(metadata ? { metadata } : {}), time: { start } };
   }
@@ -240,11 +239,11 @@ function toV1ToolState(
   };
 }
 
-function toV1AssistantMessage(
+function toAssistantMessage(
   message: SessionMessageAssistant,
   sessionID: string,
   directory: string,
-): V1MessageWithParts {
+): MessageWithParts {
   const info: AssistantMessage = {
     id: message.id,
     sessionID,
@@ -253,7 +252,7 @@ function toV1AssistantMessage(
       created: message.time.created,
       ...(message.time.completed ? { completed: message.time.completed } : {}),
     },
-    ...(message.error ? { error: toV1ErrorPayload(message.error) } : {}),
+    ...(message.error ? { error: toErrorPayload(message.error) } : {}),
     parentID: "",
     modelID: message.model.id,
     providerID: message.model.providerID,
@@ -282,36 +281,36 @@ function toV1AssistantMessage(
         },
       };
     }
-    const toolName = toV1ToolName(item.name);
+    const toolName = toToolName(item.name);
     return {
       ...base,
       id: item.id,
       type: "tool",
       callID: item.id,
       tool: toolName,
-      state: toV1ToolState(item, toolName),
+      state: toToolState(item, toolName),
     };
   });
 
   return { info, parts };
 }
 
-/** Maps the user and assistant entries of a V2 message list; other entry kinds have no V1 form. */
-export function toV1Message(
+/** Maps the user and assistant entries of a V2 message list; other entry kinds have no bot form. */
+export function toMessage(
   message: SessionMessageInfo,
   sessionID: string,
   directory: string,
-): V1MessageWithParts | null {
+): MessageWithParts | null {
   if (message.type === "user") {
-    return toV1UserMessage(message, sessionID);
+    return toUserMessage(message, sessionID);
   }
   if (message.type === "assistant") {
-    return toV1AssistantMessage(message, sessionID, directory);
+    return toAssistantMessage(message, sessionID, directory);
   }
   return null;
 }
 
-export function toV1FileDiff(diff: FileDiffInfo): FileDiff {
+export function toFileDiff(diff: FileDiffInfo): FileDiff {
   return {
     path: diff.file,
     status: diff.status,
@@ -325,7 +324,7 @@ function hasModality(list: ReadonlyArray<string>, modality: string): boolean {
   return list.includes(modality);
 }
 
-export function toV1Model(model: ModelInfo): Model {
+export function toModel(model: ModelInfo) {
   const input = model.capabilities.input;
   const output = model.capabilities.output;
   const cost = model.cost[0];
@@ -372,7 +371,7 @@ export function toV1Model(model: ModelInfo): Model {
   };
 }
 
-export function toV1Providers(
+export function toProviders(
   providers: ReadonlyArray<{ id: string; name: string }>,
   models: ReadonlyArray<ModelInfo>,
 ): Provider[] {
@@ -394,12 +393,12 @@ export function toV1Providers(
       };
       byProvider.set(model.providerID, provider);
     }
-    provider.models[model.id] = toV1Model(model);
+    provider.models[model.id] = toModel(model);
   }
   return [...byProvider.values()];
 }
 
-export function toV1Agent(agent: AgentInfo): Agent {
+export function toAgent(agent: AgentInfo): Agent {
   return {
     name: agent.id,
     ...(agent.description ? { description: agent.description } : {}),
@@ -415,7 +414,7 @@ export function toV1Agent(agent: AgentInfo): Agent {
   };
 }
 
-export function toV1Commands(
+export function toCommands(
   commands: ReadonlyArray<{ name: string; description?: string }>,
   skills: ReadonlyArray<SkillInfo>,
 ): Command[] {
@@ -437,7 +436,7 @@ export function toV1Commands(
   ];
 }
 
-export function toV1McpStatus(servers: ReadonlyArray<McpServer>): Record<string, McpStatus> {
+export function toMcpStatus(servers: ReadonlyArray<McpServer>): Record<string, McpStatus> {
   const result: Record<string, McpStatus> = {};
   for (const server of servers) {
     const status = server.status;
@@ -454,7 +453,7 @@ export function toV1McpStatus(servers: ReadonlyArray<McpServer>): Record<string,
   return result;
 }
 
-export function toV1Permission(request: V2PermissionRequest): PermissionRequest {
+export function toPermission(request: V2PermissionRequest): PermissionRequest {
   return {
     id: request.id,
     sessionID: request.sessionID,
@@ -558,7 +557,7 @@ function toQuestionInfo(field: FormField, form: FormInfo): FormQuestionInfo {
   return { question, header, options: [] };
 }
 
-export function toV1Question(form: FormInfo): QuestionRequest {
+export function toQuestion(form: FormInfo): QuestionRequest {
   const fields = visibleFormFields(form);
   return {
     id: form.id,
@@ -623,7 +622,7 @@ export function toFormAnswer(
   return result;
 }
 
-/** Splits V1 prompt parts into the V2 prompt text and file attachments. */
+/** Splits bot prompt parts into the V2 prompt text and file attachments. */
 export function toV2PromptInput(parts: ReadonlyArray<TextPartInput | FilePartInput>): {
   text: string;
   files: Array<{ uri: string; name?: string }>;

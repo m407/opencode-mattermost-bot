@@ -21,7 +21,7 @@ Functional requirements, features, and development status are in [PRODUCT.md](./
 
 - `ws` - Mattermost WebSocket events
 - Native fetch - Mattermost REST API v4
-- `@opencode-ai/sdk` - official OpenCode Server SDK
+- `@opencode/client` - OpenCode V2 client
 - `dotenv` - environment variable loading
 
 ### Test dependencies
@@ -87,6 +87,7 @@ OpenCode Server
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
 
 Before implementing:
+
 - State your assumptions explicitly. If uncertain, ask.
 - If multiple interpretations exist, present them - don't pick silently.
 - If a simpler approach exists, say so. Push back when warranted.
@@ -109,12 +110,14 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 **Touch only what you must. Clean up only your own mess.**
 
 When editing existing code:
+
 - Don't "improve" adjacent code, comments, or formatting.
 - Don't refactor things that aren't broken.
 - Match existing style, even if you'd do it differently.
 - If you notice unrelated dead code, mention it - don't delete it.
 
 When your changes create orphans:
+
 - Remove imports/variables/functions that YOUR changes made unused.
 - Don't remove pre-existing dead code unless asked.
 
@@ -125,11 +128,13 @@ The test: Every changed line should trace directly to the user's request.
 **Define success criteria. Loop until verified.**
 
 Transform tasks into verifiable goals:
+
 - "Add validation" → "Write tests for invalid inputs, then make them pass"
 - "Fix the bug" → "Write a test that reproduces it, then make it pass"
 - "Refactor X" → "Ensure tests pass before and after"
 
 For multi-step tasks, state a brief plan:
+
 ```
 1. [Step] → verify: [check]
 2. [Step] → verify: [check]
@@ -254,33 +259,25 @@ Important:
 
 ## OpenCode SDK quick reference
 
-The example below is the V1 client. OpenCode V2 goes through `@opencode/client`, wrapped in `src/opencode/v2/`.
+The bot supports OpenCode V2 only. `src/opencode/v2/` wraps `@opencode/client`; `src/opencode/types.ts` defines bot domain values. Use the inferred client type so unsupported methods fail type checking.
 
 ```typescript
-import { createOpencodeClient } from "@opencode-ai/sdk";
+import { opencodeClient } from "./opencode/client.js";
 
-const client = createOpencodeClient({ baseUrl: "http://localhost:4096" });
-
-await client.global.health();
-
-await client.project.list();
-await client.project.current();
-
-await client.session.list();
-await client.session.create({ body: { title: "My session" } });
-await client.session.prompt({
-  path: { id: "session-id" },
-  body: { parts: [{ type: "text", text: "Implement feature X" }] },
+await opencodeClient.global.health();
+await opencodeClient.project.list();
+await opencodeClient.session.create({ directory: "/project", title: "My session" });
+await opencodeClient.session.promptAsync({
+  sessionID: "session-id",
+  parts: [{ type: "text", text: "Implement feature X" }],
 });
-await client.session.abort({ path: { id: "session-id" } });
+await opencodeClient.session.abort({ sessionID: "session-id" });
 
-const events = await client.event.subscribe();
+const events = await opencodeClient.global.event();
 for await (const event of events.stream) {
-  // handle SSE event
+  // handle normalized global SSE event
 }
 ```
-
-Full docs: https://opencode.ai/docs/sdk
 
 ## Workflow
 

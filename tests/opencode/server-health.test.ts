@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocked = vi.hoisted(() => ({
   healthMock: vi.fn(),
   probeMock: vi.fn(),
-  serverVersion: "v1" as "v1" | "v2",
   loggerWarnMock: vi.fn(),
   loggerErrorMock: vi.fn(),
 }));
@@ -13,9 +12,6 @@ vi.mock("../../src/opencode/client.js", () => ({
     global: {
       health: mocked.healthMock,
     },
-  },
-  get opencodeServerVersion() {
-    return mocked.serverVersion;
   },
   probeOpencodeServer: mocked.probeMock,
 }));
@@ -45,7 +41,6 @@ import {
 describe("opencode/server-health", () => {
   beforeEach(() => {
     __resetServerHealthStateForTests();
-    mocked.serverVersion = "v1";
     mocked.healthMock.mockReset();
     mocked.probeMock.mockReset();
     mocked.probeMock.mockResolvedValue({ kind: "none" });
@@ -54,59 +49,46 @@ describe("opencode/server-health", () => {
   });
 
   it("reports a matching server as healthy with its version", async () => {
-    mocked.healthMock.mockResolvedValue({ data: { healthy: true, version: "1.18.32" } });
+    mocked.healthMock.mockResolvedValue({ data: { healthy: true, version: "2.0.16" } });
 
-    await expect(checkOpencodeHealth()).resolves.toEqual({ healthy: true, version: "1.18.32" });
+    await expect(checkOpencodeHealth()).resolves.toEqual({ healthy: true, version: "2.0.16" });
     expect(mocked.probeMock).not.toHaveBeenCalled();
   });
 
-  it("logs a version mismatch naming both versions and never the credentials", async () => {
+  it("logs an unsupported endpoint and never the credentials", async () => {
     mocked.healthMock.mockResolvedValue({ data: "<!doctype html>" });
-    mocked.probeMock.mockImplementation(async (version: string) =>
-      version === "v2"
-        ? { kind: "found", version: "v2", serverVersion: "2.0.16" }
-        : { kind: "none" },
-    );
+    mocked.probeMock.mockResolvedValue({ kind: "unsupported" });
 
     const health = await checkOpencodeHealth();
 
     expect(health.healthy).toBe(false);
     expect(mocked.loggerErrorMock).toHaveBeenCalledTimes(1);
     const message = mocked.loggerErrorMock.mock.calls[0]?.[0] as string;
-    expect(message).toContain("OPENCODE_SERVER_VERSION=v1");
-    expect(message).toContain("OpenCode 2.0.16 (API v2)");
-    expect(message).toContain("Set OPENCODE_SERVER_VERSION=v2");
     expect(message).toContain("http://127.0.0.1:4096");
     expect(message).not.toContain("secret");
+    expect(message).toContain("supported OpenCode V2 API");
   });
 
-  it("logs the same mismatch only once until the server is healthy again", async () => {
+  it("logs the same unsupported endpoint only once until the server is healthy again", async () => {
     mocked.healthMock.mockResolvedValue({ data: undefined, error: new Error("Unexpected status") });
-    mocked.probeMock.mockImplementation(async (version: string) =>
-      version === "v2"
-        ? { kind: "found", version: "v2", serverVersion: "2.0.16" }
-        : { kind: "none" },
-    );
+    mocked.probeMock.mockResolvedValue({ kind: "unsupported" });
 
     await checkOpencodeHealth();
     await checkOpencodeHealth();
     expect(mocked.loggerErrorMock).toHaveBeenCalledTimes(1);
 
-    mocked.healthMock.mockResolvedValueOnce({ data: { healthy: true, version: "1.18.32" } });
+    mocked.healthMock.mockResolvedValueOnce({ data: { healthy: true, version: "2.0.16" } });
     await checkOpencodeHealth();
     await checkOpencodeHealth();
     expect(mocked.loggerErrorMock).toHaveBeenCalledTimes(2);
   });
 
   it("reports wrong credentials as an authentication problem, not a mismatch", async () => {
-    mocked.serverVersion = "v2";
     mocked.healthMock.mockResolvedValue({
       data: undefined,
       error: new Error("UnsupportedContentType"),
     });
-    mocked.probeMock.mockImplementation(async (version: string) =>
-      version === "v2" ? { kind: "unauthorized" } : { kind: "none" },
-    );
+    mocked.probeMock.mockResolvedValue({ kind: "unauthorized" });
 
     const health = await checkOpencodeHealth();
 
@@ -115,22 +97,6 @@ describe("opencode/server-health", () => {
     expect(mocked.loggerWarnMock).toHaveBeenCalledWith(
       expect.stringContaining("Authentication failed"),
     );
-  });
-
-  it("recognises a password-protected server of the other version as a mismatch", async () => {
-    mocked.healthMock.mockResolvedValue({ data: "<!doctype html>" });
-    mocked.probeMock.mockImplementation(async (version: string) =>
-      version === "v2" ? { kind: "unauthorized" } : { kind: "none" },
-    );
-
-    await checkOpencodeHealth();
-
-    expect(mocked.loggerWarnMock).not.toHaveBeenCalled();
-    expect(mocked.loggerErrorMock).toHaveBeenCalledTimes(1);
-    const message = mocked.loggerErrorMock.mock.calls[0]?.[0] as string;
-    expect(message).toContain("OPENCODE_SERVER_VERSION=v1");
-    expect(message).toContain("(API v2)");
-    expect(message).toContain("Set OPENCODE_SERVER_VERSION=v2");
   });
 
   it("does not probe when the server is not running", async () => {
@@ -145,28 +111,21 @@ describe("opencode/server-health", () => {
     expect(mocked.probeMock).not.toHaveBeenCalled();
   });
 
-  it("logs nothing when neither version answers", async () => {
+  it("logs nothing when the endpoint does not answer", async () => {
     mocked.healthMock.mockRejectedValue(new Error("boom"));
 
     const health = await checkOpencodeHealth();
 
     expect(health.healthy).toBe(false);
-    expect(mocked.probeMock).toHaveBeenCalledWith("v1");
-    expect(mocked.probeMock).toHaveBeenCalledWith("v2");
+    expect(mocked.probeMock).toHaveBeenCalledExactlyOnceWith();
     expect(mocked.loggerErrorMock).not.toHaveBeenCalled();
   });
 
   it("classifies a failed health check without logging", async () => {
-    mocked.probeMock.mockImplementation(async (version: string) =>
-      version === "v2"
-        ? { kind: "found", version: "v2", serverVersion: "2.0.16" }
-        : { kind: "none" },
-    );
+    mocked.probeMock.mockResolvedValue({ kind: "unsupported" });
 
     await expect(classifyFailedHealthCheck()).resolves.toEqual({
-      kind: "mismatch",
-      actual: "OpenCode 2.0.16",
-      otherVersion: "v2",
+      kind: "unsupported",
     });
     expect(mocked.loggerErrorMock).not.toHaveBeenCalled();
 

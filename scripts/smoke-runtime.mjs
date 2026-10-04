@@ -24,56 +24,76 @@ const send = (res, data, status = 200) => {
 const api = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   const p = url.pathname;
-  if (p.endsWith("/event")) {
+  if (p === "/api/event") {
     res.writeHead(200, { "Content-Type": "text/event-stream" });
     res.write(": connected\n\n");
     streams.add(res);
     req.on("close", () => streams.delete(res));
     return;
   }
-  if (p === "/global/health") return send(res, { healthy: true, version: "1.18.8" });
-  if (p === "/project")
-    return send(res, [{ id: "project", worktree: "/project", name: "Project" }]);
-  if (p === "/path") return send(res, { directory: "/project", worktree: "/project" });
-  if (p === "/session" && req.method === "POST")
-    return send(res, { id: "session-1", title: "Smoke", directory: "/project" });
-  if (p === "/session/status") return send(res, {});
-  if (p === "/permission" || p === "/question") return send(res, []);
-  if (p === "/session/session-1/message")
-    return send(
-      res,
-      complete
+  const tokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } };
+  const session = {
+    id: "session-1",
+    projectID: "project",
+    title: "Smoke",
+    agent: "build",
+    model: { id: "model", providerID: "test" },
+    location: { directory: "/project" },
+    time: { created: 1, updated: 2 },
+    cost: 0,
+    tokens,
+  };
+  if (p === "/api/info") return send(res, { version: "2.0.16", pid: 1, urls: [], paths: {} });
+  if (p === "/api/project")
+    return send(res, [
+      {
+        id: "project",
+        canonical: "/project",
+        name: "Project",
+        time: { created: 1, updated: 2 },
+        sandboxes: [],
+      },
+    ]);
+  if (p === "/api/fs/list") return send(res, { data: [] });
+  if (p === "/api/session" && req.method === "POST") return send(res, { data: session });
+  if (p === "/api/session/session-1") return send(res, { data: session });
+  if (p === "/api/session/active") return send(res, { data: {} });
+  if (p === "/api/permission/request" || p === "/api/form") return send(res, { data: [] });
+  if (p === "/api/session/session-1/message")
+    return send(res, {
+      data: complete
         ? [
             {
-              info: {
-                id: "assistant-1",
-                sessionID: "session-1",
-                role: "assistant",
-                time: { created: Date.now(), completed: Date.now() },
-              },
-              parts: [
-                {
-                  id: "part-1",
-                  type: "text",
-                  text: "Runtime smoke passed",
-                  sessionID: "session-1",
-                  messageID: "assistant-1",
-                },
-              ],
+              type: "assistant",
+              id: "assistant-1",
+              sessionID: "session-1",
+              agent: "build",
+              model: { id: "model", providerID: "test" },
+              time: { created: Date.now(), completed: Date.now() },
+              cost: 0,
+              tokens,
+              finish: "stop",
+              content: [{ type: "text", text: "Runtime smoke passed" }],
             },
           ]
         : [],
-    );
-  if (p === "/session/session-1/prompt_async") {
+      next: null,
+    });
+  if (p === "/api/session/session-1/prompt") {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     prompt = JSON.parse(Buffer.concat(chunks));
     complete = true;
-    send(res, {}, 202);
+    send(res, { data: { id: "inbox-1" } });
     setTimeout(() => {
-      const event = { type: "session.idle", properties: { sessionID: "session-1" } };
-      for (const stream of streams)
-        stream.write("data: " + JSON.stringify({ directory: "/project", payload: event }) + "\n\n");
+      const event = {
+        id: "evt-1",
+        created: Date.now(),
+        type: "session.execution.succeeded",
+        location: { directory: "/project" },
+        data: { sessionID: "session-1" },
+      };
+      for (const stream of streams) stream.write("data: " + JSON.stringify(event) + "\n\n");
     }, 80);
     return;
   }
@@ -143,7 +163,7 @@ try {
       MATTERMOST_BOT_TOKEN: "smoke-token",
       MATTERMOST_ALLOWED_USER_ID: user,
       MATTERMOST_CHANNEL_ID: channel,
-      OPENCODE_SERVER_VERSION: "v1",
+      OPENCODE_SERVER_VERSION: "",
       OPENCODE_API_URL: `http://127.0.0.1:${api.address().port}`,
       OPENCODE_MODEL_PROVIDER: "test",
       OPENCODE_MODEL_ID: "model",
@@ -163,7 +183,7 @@ try {
   await wait(() => streams.size > 0, "SSE subscription");
   message("Verify runtime");
   await wait(() => posts.some((p) => p.message === "Runtime smoke passed"), "assistant reply");
-  if (prompt.parts[0].text !== "Verify runtime") throw new Error("Wrong SDK prompt");
+  if (prompt.text !== "Verify runtime") throw new Error("Wrong SDK prompt");
   if (posts.find((p) => p.message === "Runtime smoke passed").root_id !== root)
     throw new Error("Wrong output thread");
   child.kill("SIGTERM");
@@ -175,7 +195,7 @@ try {
     });
   });
   process.stdout.write(
-    "PASS: compiled runtime, Mattermost REST/WebSocket, project/session selection, OpenCode prompt + SSE reply, thread routing and graceful shutdown\n",
+    "PASS: compiled runtime, Mattermost REST/WebSocket, project/session selection, OpenCode V2 prompt + SSE reply, thread routing and graceful shutdown\n",
   );
 } finally {
   child?.kill("SIGKILL");

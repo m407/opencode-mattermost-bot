@@ -38,18 +38,22 @@ export function validateRuntimeEnvValues(values: Record<string, string>): {
       return { isValid: false, reason: `Invalid ${key}` };
     }
   }
-  if (values.OPENCODE_SERVER_VERSION && !["v1", "v2"].includes(values.OPENCODE_SERVER_VERSION))
-    return { isValid: false, reason: "Invalid OPENCODE_SERVER_VERSION" };
+  if (values.OPENCODE_SERVER_VERSION && values.OPENCODE_SERVER_VERSION !== "v2")
+    return { isValid: false, reason: "Only OpenCode V2 is supported" };
   return { isValid: true };
 }
 export function buildEnvFileContent(existing: string, values: WizardEnvValues): string {
   const remaining = new Set(Object.keys(values));
-  const lines = existing.split(/\r?\n/).map((line) => {
-    const key = /^\s*(?:export\s+)?([A-Z_][A-Z_0-9]*)\s*=/.exec(line)?.[1];
-    if (!key || !remaining.has(key)) return line;
-    remaining.delete(key);
-    return `${key}=${JSON.stringify(values[key])}`;
-  });
+  remaining.delete("OPENCODE_SERVER_VERSION");
+  const lines = existing
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(?:export\s+)?OPENCODE_SERVER_VERSION\s*=/.test(line))
+    .map((line) => {
+      const key = /^\s*(?:export\s+)?([A-Z_][A-Z_0-9]*)\s*=/.exec(line)?.[1];
+      if (!key || !remaining.has(key)) return line;
+      remaining.delete(key);
+      return `${key}=${JSON.stringify(values[key])}`;
+    });
   for (const key of remaining) lines.push(`${key}=${JSON.stringify(values[key])}`);
   return lines.join("\n").trim() + "\n";
 }
@@ -72,6 +76,7 @@ export async function ensureRuntimeConfigForStart(): Promise<void> {
 export async function runConfigWizardCommand(): Promise<void> {
   const existing = await readEnv();
   const values = dotenv.parse(existing);
+  delete values.OPENCODE_SERVER_VERSION;
   let muted = false;
   const output = new Writable({
     write(chunk, _encoding, done) {
@@ -85,13 +90,8 @@ export async function runConfigWizardCommand(): Promise<void> {
     terminal: Boolean(process.stdin.isTTY),
   });
   try {
-    for (const key of [
-      ...required,
-      "OPENCODE_SERVER_VERSION",
-      "OPENCODE_API_URL",
-      "OPENCODE_SERVER_PASSWORD",
-    ]) {
-      const current = values[key] ?? (key === "OPENCODE_SERVER_VERSION" ? "v2" : "");
+    for (const key of [...required, "OPENCODE_API_URL", "OPENCODE_SERVER_PASSWORD"]) {
+      const current = values[key] ?? "";
       const secret = /TOKEN|PASSWORD/.test(key);
       process.stdout.write(
         `${key}${current ? (secret ? " [configured]" : ` [${current}]`) : ""}: `,

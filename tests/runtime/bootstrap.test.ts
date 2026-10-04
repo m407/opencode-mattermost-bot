@@ -10,6 +10,23 @@ const valid = {
   OPENCODE_MODEL_ID: "model",
 };
 describe("Mattermost setup", () => {
+  it("rejects obsolete server selection and removes it when saving config", () => {
+    expect(validateRuntimeEnvValues({ ...valid, OPENCODE_SERVER_VERSION: "v1" }).isValid).toBe(
+      false,
+    );
+    expect(validateRuntimeEnvValues({ ...valid, OPENCODE_SERVER_VERSION: "v2" }).isValid).toBe(
+      true,
+    );
+    const saved = dotenv.parse(
+      buildEnvFileContent("OPENCODE_SERVER_VERSION=v1\nCUSTOM=value", {
+        ...valid,
+        OPENCODE_SERVER_VERSION: "v1",
+      }),
+    );
+    expect(saved).not.toHaveProperty("OPENCODE_SERVER_VERSION");
+    expect(saved.CUSTOM).toBe("value");
+    expect(validateRuntimeEnvValues(saved).isValid).toBe(true);
+  });
   it("accepts a complete configuration", () => {
     expect(validateRuntimeEnvValues(valid).isValid).toBe(true);
   });

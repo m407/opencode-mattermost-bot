@@ -236,25 +236,12 @@ export function setSendDiffFileAttachments(enabled: boolean): void {
   void writeSettingsFile(currentSettings);
 }
 
-/**
- * The message queue mode in effect for the configured OpenCode server. V1 keeps its
- * released On/Off boolean (off by default); V2 stores its own mode (steer by default),
- * so neither version's choice moves the other's.
- */
+/** V2 steering is the default; a local queue or no queue can be selected explicitly. */
 export function getPromptQueueMode(): PromptQueueMode {
-  if (config.opencode.serverVersion === "v2") {
-    return currentSettings.promptQueueMode ?? "steer";
-  }
-
-  return currentSettings.promptQueueEnabled === true ? "queue" : "off";
+  return currentSettings.promptQueueMode ?? "steer";
 }
-
 export function setPromptQueueMode(mode: PromptQueueMode): void {
-  if (config.opencode.serverVersion === "v2") {
-    currentSettings.promptQueueMode = mode;
-  } else {
-    currentSettings.promptQueueEnabled = mode !== "off";
-  }
+  currentSettings.promptQueueMode = mode;
   void writeSettingsFile(currentSettings);
 }
 
@@ -351,7 +338,7 @@ function applyInitialSettingsPreset(preset: Record<string, unknown>): void {
     "showAssistantRunFooter",
     "pinnedDashboardEnabled",
     "sendDiffFileAttachments",
-    "promptQueueEnabled",
+    "promptQueueMode",
   ]);
 
   for (const [key, value] of Object.entries(preset)) {
@@ -369,8 +356,12 @@ function applyInitialSettingsPreset(preset: Record<string, unknown>): void {
       if (currentSettings.ttsMode === undefined) {
         currentSettings.ttsMode = value as TtsMode;
       }
+    } else if (key === "promptQueueMode") {
+      if (value !== "off" && value !== "queue" && value !== "steer")
+        throw new Error("INITIAL_SETTINGS_PRESET: promptQueueMode must be off, queue or steer.");
+      currentSettings.promptQueueMode ??= value;
     } else {
-      // Boolean settings: compactOutputMode, deleteCompactProgressOnFinish, showThinkingContent, showAssistantRunFooter, pinnedDashboardEnabled, sendDiffFileAttachments, promptQueueEnabled
+      // Boolean settings: compactOutputMode, deleteCompactProgressOnFinish, showThinkingContent, showAssistantRunFooter, pinnedDashboardEnabled, sendDiffFileAttachments
       if (typeof value !== "boolean") {
         throw new Error(`INITIAL_SETTINGS_PRESET: "${key}" must be a boolean.`);
       }
@@ -398,10 +389,6 @@ function applyInitialSettingsPreset(preset: Record<string, unknown>): void {
         case "sendDiffFileAttachments":
           if (currentSettings.sendDiffFileAttachments === undefined)
             currentSettings.sendDiffFileAttachments = value;
-          break;
-        case "promptQueueEnabled":
-          if (currentSettings.promptQueueEnabled === undefined)
-            currentSettings.promptQueueEnabled = value;
           break;
       }
     }

@@ -25,7 +25,6 @@ export interface Settings {
   showAssistantRunFooter?: boolean | undefined;
   pinnedDashboardEnabled?: boolean | undefined;
   sendDiffFileAttachments?: boolean | undefined;
-  promptQueueEnabled?: boolean | undefined;
   promptQueueMode?: PromptQueueMode | undefined;
   sessionDirectoryCache?: SessionDirectoryCacheInfo | undefined;
   scheduledTasks?: ScheduledTask[] | undefined;

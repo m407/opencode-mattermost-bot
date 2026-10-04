@@ -54,9 +54,7 @@
   "homepage": "https://github.com/m407/opencode-telegram-bot#readme",
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.4.0",
-    "@opencode-ai/sdk": "^1.18.8",
     "@opencode/client": "^2.0.16",
-    "better-sqlite3": "^13.0.1",
     "dotenv": "^17.4.2",
     "ws": "^8.21.1"
   },
@@ -66,7 +64,6 @@
     }
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.20.1",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.11",

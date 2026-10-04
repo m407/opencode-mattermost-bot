@@ -2,9 +2,9 @@ import { t } from "../i18n/index.js";
 import { randomUUID } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import type { FilePartInput } from "@opencode-ai/sdk/v2";
+import type { FilePartInput } from "../opencode/types.js";
 import { config } from "../config.js";
-import { opencodeClient, opencodeServerVersion, opencodeV2Client } from "../opencode/client.js";
+import { opencodeClient } from "../opencode/client.js";
 import { subscribeToEvents, stopEventListening, type EventEnvelope } from "../opencode/events.js";
 import { checkOpencodeHealth } from "../opencode/server-health.js";
 import { canStartLocalOpencodeServer } from "../opencode/local-start.js";
@@ -321,7 +321,7 @@ export class MattermostBot {
       worktree: directory,
     }));
     // Probe through OpenCode so remote-server directories are supported as well.
-    const check = await opencodeClient.path.get({ directory });
+    const check = await opencodeClient.file.list({ path: directory });
     if (check.error) throw check.error;
     await this.activity.reset();
     await this.interactions.clear();
@@ -368,7 +368,7 @@ export class MattermostBot {
           t("mattermost.bot.opencode_mattermost_bot_server_project_session_agent_mo", {
             value1: await getBotVersion(),
             value2: health.healthy ? "online" : "offline",
-            value3: opencodeServerVersion,
+            value3: "v2",
             value4: settings.getCurrentProject()?.worktree ?? "none",
             value5: session?.title ?? "none",
             value6: getStoredAgent(),
@@ -710,21 +710,16 @@ export class MattermostBot {
       case "compact": {
         this.requireIdle();
         const session = this.requireSession();
-        const model = getStoredModel();
         const { error } = await opencodeClient.session.summarize({
           sessionID: session.id,
           directory: session.directory,
-          providerID: model.providerID,
-          modelID: model.modelID,
         });
         if (error) throw error;
         await this.messages.send(target, t("mattermost.bot.session_compacted"));
         return;
       }
       case "reload": {
-        if (opencodeServerVersion !== "v2")
-          throw new Error(t("mattermost.bot.config_reload_requires_opencode_v"));
-        const { error } = await opencodeV2Client.location.reload();
+        const { error } = await opencodeClient.location.reload();
         if (error) throw error;
         await this.activity.reconcile();
         await this.messages.send(target, t("mattermost.bot.opencode_configuration_reloaded"));
@@ -746,7 +741,7 @@ export class MattermostBot {
           }
           if (!(await canStartLocalOpencodeServer(local, "always")))
             throw new Error(t("mattermost.bot.opencode_cannot_be_started_see_the_bot_logs"));
-          await startLocalOpencodeServer(local, opencodeServerVersion);
+          await startLocalOpencodeServer(local);
           if (getCurrentSession()) this.subscribe(getCurrentSession()!.directory);
           await this.messages.send(target, t("mattermost.bot.opencode_startup_requested"));
         } else {
@@ -839,7 +834,7 @@ export class MattermostBot {
           name: `${key}: ${value.get() ? "on" : "off"}`,
           data: `settings ${key} ${value.get() ? "off" : "on"}`,
         })),
-        ...["off", "queue", ...(opencodeServerVersion === "v2" ? ["steer"] : [])].map((value) => ({
+        ...["off", "queue", "steer"].map((value) => ({
           name: t("mattermost.bot.queue", { value1: value }),
           data: `settings queue ${value}`,
         })),
@@ -853,10 +848,7 @@ export class MattermostBot {
     const [key, value] = args.split(" ");
     if (key && toggles[key] && ["on", "off"].includes(value ?? ""))
       toggles[key]!.set(value === "on");
-    else if (
-      key === "queue" &&
-      ["off", "queue", ...(opencodeServerVersion === "v2" ? ["steer"] : [])].includes(value ?? "")
-    )
+    else if (key === "queue" && ["off", "queue", "steer"].includes(value ?? ""))
       settings.setPromptQueueMode(value as "off" | "queue" | "steer");
     else if (key === "tts" && ["off", "all", "auto"].includes(value ?? ""))
       settings.setTtsMode(value as "off" | "all" | "auto");
@@ -1046,8 +1038,8 @@ export class MattermostBot {
         throw new Error(
           t("mattermost.bot.the_session_is_busy_enable_settings_queue_queue_or_use_"),
         );
-      if (settings.getPromptQueueMode() === "steer" && opencodeServerVersion === "v2") {
-        const { error } = await opencodeV2Client.session.promptAsync({
+      if (settings.getPromptQueueMode() === "steer") {
+        const { error } = await opencodeClient.session.promptAsync({
           sessionID: session.id,
           directory: session.directory,
           delivery: "steer",

@@ -45,7 +45,7 @@ describe("opencode/v2/events", () => {
     expect(failed?.properties).toEqual({ sessionID: SESSION });
   });
 
-  it("turns a streamed V2 reply into the V1 message and part events", () => {
+  it("turns a streamed V2 reply into the domain message and part events", () => {
     const translate = createV2EventTranslator();
 
     const result = payloads(translate, [
@@ -109,7 +109,7 @@ describe("opencode/v2/events", () => {
     });
   });
 
-  it("follows a tool call from input to result under its V1 name", () => {
+  it("follows a tool call from input to result under its domain name", () => {
     const translate = createV2EventTranslator();
     const base = { sessionID: SESSION, assistantMessageID: MESSAGE, id: "call-1" };
 
@@ -141,7 +141,7 @@ describe("opencode/v2/events", () => {
     });
   });
 
-  it("gives a V2 edit and a patch the V1 file-change metadata", () => {
+  it("gives a V2 edit and a patch the domain file-change metadata", () => {
     const translate = createV2EventTranslator();
     const file = { file: "src/a.ts", patch: "+x", status: "modified", additions: 1, deletions: 0 };
 
@@ -235,7 +235,7 @@ describe("opencode/v2/events", () => {
     });
   });
 
-  it("shows a delivered prompt as a V1 user message", () => {
+  it("shows a delivered prompt as a domain user message", () => {
     const translate = createV2EventTranslator();
 
     const result = payloads(translate, [
@@ -292,7 +292,7 @@ describe("opencode/v2/events", () => {
     });
   });
 
-  it("turns V2 permissions and forms into V1 permission and question events", () => {
+  it("turns V2 permissions and forms into domain permission and question events", () => {
     const onForm = vi.fn();
     const translate = createV2EventTranslator({ onForm });
     const form = {

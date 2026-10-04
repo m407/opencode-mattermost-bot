@@ -1,10 +1,5 @@
-import { createOpencodeClient } from "@opencode-ai/sdk/v2";
-import { config, type OpencodeServerVersion } from "../config.js";
-import {
-  createV2OpencodeClient,
-  findRegisteredV2ServerUrl,
-  type V2ClientExtension,
-} from "./v2/client.js";
+import { config } from "../config.js";
+import { createV2OpencodeClient, findRegisteredV2ServerUrl } from "./v2/client.js";
 
 const PROBE_TIMEOUT_MS = 5000;
 
@@ -21,84 +16,48 @@ const authHeaders = (): Record<string, string> | undefined => {
   return auth ? { Authorization: auth } : undefined;
 };
 
-/** The API version the bot was configured for; there is no detection or switching. */
-export const opencodeServerVersion: OpencodeServerVersion =
-  config.opencode.serverVersion === "v2" ? "v2" : "v1";
-
-function createClient() {
-  const headers = authHeaders();
-  if (opencodeServerVersion === "v2") {
-    return createV2OpencodeClient({
-      baseUrl: config.opencode.apiUrl,
-      ...(headers ? { headers } : {}),
-    });
-  }
-  return createOpencodeClient({
-    baseUrl: config.opencode.apiUrl,
-    headers,
-  });
-}
-
-export const opencodeClient = createClient();
-
-/** The V2-only operations of the same client; use only when `opencodeServerVersion` is "v2". */
-export const opencodeV2Client = opencodeClient as unknown as V2ClientExtension;
+const headers = authHeaders();
+export const opencodeClient = createV2OpencodeClient({
+  baseUrl: config.opencode.apiUrl,
+  ...(headers ? { headers } : {}),
+});
 
 export type OpencodeServerProbe =
-  | { kind: "found"; version: OpencodeServerVersion; serverVersion: string }
+  | { kind: "found"; serverVersion: string }
   | { kind: "unauthorized" }
+  | { kind: "unsupported" }
   | { kind: "none" };
 
-const PROBE_ROUTES: Record<OpencodeServerVersion, string> = {
-  v1: "global/health",
-  v2: "api/info",
-};
-
-function readServerVersion(version: OpencodeServerVersion, body: unknown): string | null {
-  if (typeof body !== "object" || body === null) {
-    return null;
-  }
-  const record = body as Record<string, unknown>;
-  if (typeof record.version !== "string") {
-    return null;
-  }
-  if (version === "v1") {
-    return record.healthy === true ? record.version : null;
-  }
-  return typeof record.pid === "number" ? record.version : null;
-}
-
-/**
- * Asks the configured URL whether it answers the given API version, with the configured
- * credentials. Used to explain a failed health check, never to switch clients.
- */
-export async function probeOpencodeServer(
-  version: OpencodeServerVersion,
-): Promise<OpencodeServerProbe> {
-  const baseUrl = config.opencode.apiUrl.endsWith("/")
-    ? config.opencode.apiUrl
-    : `${config.opencode.apiUrl}/`;
+/** Probe only the supported server API; never fall back to another protocol. */
+export async function probeOpencodeServer(): Promise<OpencodeServerProbe> {
+  const baseUrl = config.opencode.apiUrl.replace(/\/$/, "") + "/";
   try {
     const headers = authHeaders();
-    const response = await fetch(new URL(PROBE_ROUTES[version], baseUrl), {
+    const response = await fetch(new URL("api/info", baseUrl), {
       ...(headers ? { headers } : {}),
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      redirect: "error",
     });
-    if (response.status === 401) {
-      return { kind: "unauthorized" };
-    }
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!response.ok || !contentType.includes("json")) {
-      return { kind: "none" };
-    }
-    const serverVersion = readServerVersion(version, await response.json());
-    return serverVersion ? { kind: "found", version, serverVersion } : { kind: "none" };
+    if (response.status === 401 || response.status === 403) return { kind: "unauthorized" };
+    if (!response.ok || !response.headers.get("content-type")?.includes("json"))
+      return { kind: "unsupported" };
+    const body: unknown = await response.json();
+    if (
+      body &&
+      typeof body === "object" &&
+      "version" in body &&
+      typeof body.version === "string" &&
+      /^2\./.test(body.version) &&
+      "pid" in body &&
+      typeof body.pid === "number"
+    )
+      return { kind: "found", serverVersion: body.version };
+    return { kind: "unsupported" };
   } catch {
     return { kind: "none" };
   }
 }
 
-/** URL of the registered OpenCode V2 background server, or null when none answers. */
 export async function findRegisteredOpencodeServerUrl(): Promise<string | null> {
   return findRegisteredV2ServerUrl();
 }

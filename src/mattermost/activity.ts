@@ -350,7 +350,7 @@ export class MattermostActivity {
   private async finish(directory: string, sessionId: string): Promise<void> {
     const generation = this.generation;
     const target = this.target();
-    // V1 emits both idle variants. A stale idle event must not advance the next run.
+    // The event translator emits both idle variants. A stale idle event must not advance the next run.
     const status = await opencodeClient.session.status({ directory });
     if (status.error) throw status.error;
     if (["busy", "retry"].includes(status.data?.[sessionId]?.type ?? "")) return;

@@ -32,7 +32,6 @@ vi.mock("../../src/opencode/client.js", () => ({
       health: mocked.healthMock,
     },
   },
-  opencodeServerVersion: "v1",
 }));
 
 vi.mock("../../src/opencode/local-start.js", () => ({
@@ -197,13 +196,10 @@ describe("opencode/auto-restart", () => {
     await service.start();
 
     expect(mocked.startLocalOpencodeServerMock).toHaveBeenCalledTimes(1);
-    expect(mocked.startLocalOpencodeServerMock).toHaveBeenCalledWith(
-      {
-        host: "localhost",
-        port: 4096,
-      },
-      "v1",
-    );
+    expect(mocked.startLocalOpencodeServerMock).toHaveBeenCalledWith({
+      host: "localhost",
+      port: 4096,
+    });
     expect(childProcess.unref).toHaveBeenCalledTimes(1);
     expect(mocked.notifyUnavailableMock).toHaveBeenCalledWith("auto_restart_startup");
     expect(mocked.notifyReadyMock).toHaveBeenCalledWith("auto_restart_startup");

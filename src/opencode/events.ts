@@ -1,5 +1,5 @@
 import { opencodeClient } from "./client.js";
-import { Event } from "@opencode-ai/sdk/v2";
+import { Event } from "./types.js";
 import { logger } from "../utils/logger.js";
 import { isRecord } from "../utils/type-guards.js";
 import { isExpectedOpencodeUnavailableError } from "../utils/opencode-error.js";
@@ -13,28 +13,14 @@ export interface EventEnvelope {
 export type EventCallback = (envelope: EventEnvelope) => void;
 /**
  * What a reconnect tells about the server: `serverRestarted` is true when it is another
- * process than before, false when it is the same one, null when that cannot be told (V1,
- * or no answer).
+ * process than before, false when it is the same one, null when the server identity could not be determined.
  */
 export interface ReconnectInfo {
   serverRestarted: boolean | null;
 }
 /** Runs once the stream delivers again after it dropped, since missed events are not replayed. */
 export type ReconnectCallback = (info: ReconnectInfo) => void;
-type EventStreamSource = "global" | "legacy";
-type EventStreamSubscription = {
-  source: EventStreamSource;
-  stream: AsyncGenerator<unknown, unknown, unknown>;
-};
-type EventSubscriptionResult = {
-  stream?: AsyncGenerator<unknown, unknown, unknown> | null;
-};
-type OptionalGlobalEventApi = {
-  event?: (options?: { signal?: AbortSignal }) => Promise<EventSubscriptionResult>;
-};
-type OptionalGlobalEventClient = {
-  global?: OptionalGlobalEventApi;
-};
+type EventStreamSubscription = { stream: AsyncGenerator<unknown, unknown, unknown> };
 
 const RECONNECT_BASE_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 15000;
@@ -178,23 +164,6 @@ function normalizeGlobalEvent(rawEvent: unknown, directory: string): EventEnvelo
   return { directory: eventDirectory || directory, event: rawEvent.payload };
 }
 
-function normalizeEvent(
-  rawEvent: unknown,
-  source: EventStreamSource,
-  directory: string,
-): EventEnvelope | null {
-  if (source === "global") {
-    return normalizeGlobalEvent(rawEvent, directory);
-  }
-
-  if (!isEventLike(rawEvent)) {
-    logger.debug("[Events] Ignoring legacy event with unknown shape");
-    return null;
-  }
-
-  return { directory, event: rawEvent };
-}
-
 /** The V2 adapter marks the connect event with whether the server restarted. */
 function getReconnectInfo(event: Event): ReconnectInfo {
   if (event.type !== "server.connected") {
@@ -205,30 +174,12 @@ function getReconnectInfo(event: Event): ReconnectInfo {
 }
 
 async function subscribeToGlobalEventStream(signal: AbortSignal): Promise<EventStreamSubscription> {
-  const globalEvents = (opencodeClient as OptionalGlobalEventClient).global;
-  if (!globalEvents?.event) {
-    throw new Error("Global event subscription is not available");
-  }
-
-  const result = await globalEvents.event({ signal });
+  const result = await opencodeClient.global.event({ signal });
   if (!result.stream) {
     throw new Error(FATAL_NO_STREAM_ERROR);
   }
 
-  return { source: "global", stream: result.stream };
-}
-
-async function subscribeToLegacyEventStream(
-  directory: string,
-  signal: AbortSignal,
-): Promise<EventStreamSubscription> {
-  const result = await opencodeClient.event.subscribe({ directory }, { signal });
-
-  if (!result.stream) {
-    throw new Error(FATAL_NO_STREAM_ERROR);
-  }
-
-  return { source: "legacy", stream: result.stream };
+  return { stream: result.stream };
 }
 
 export async function subscribeToEvents(
@@ -262,48 +213,17 @@ export async function subscribeToEvents(
 
   try {
     let reconnectAttempt = 0;
-    let useLegacyEventsOnce = false;
     let streamDropped = false;
 
     while (isListening && activeDirectory === directory && !controller.signal.aborted) {
       let attemptAbort: ReturnType<typeof createAttemptAbortController> | null = null;
       try {
-        let subscription: EventStreamSubscription;
         attemptAbort = createAttemptAbortController(controller.signal);
-        if (useLegacyEventsOnce) {
-          useLegacyEventsOnce = false;
-          subscription = await subscribeToLegacyEventStream(
-            directory,
-            attemptAbort.controller.signal,
-          );
-        } else {
-          try {
-            subscription = await subscribeToGlobalEventStream(attemptAbort.controller.signal);
-            logger.debug(`Using global OpenCode event stream for ${directory}`);
-          } catch (error) {
-            if (controller.signal.aborted || !isListening || activeDirectory !== directory) {
-              throw error;
-            }
-
-            if (isExpectedOpencodeUnavailableError(error)) {
-              throw error;
-            }
-
-            logger.warn(
-              `Global event stream unavailable for ${directory}, falling back to project event stream`,
-              error,
-            );
-            subscription = await subscribeToLegacyEventStream(
-              directory,
-              attemptAbort.controller.signal,
-            );
-          }
-        }
+        const subscription = await subscribeToGlobalEventStream(attemptAbort.controller.signal);
 
         reconnectAttempt = 0;
         consecutiveTimeouts = 0;
         eventStream = subscription.stream;
-        let usefulEventCount = 0;
         let connectedSeen = false;
 
         try {
@@ -339,18 +259,16 @@ export async function subscribeToEvents(
             // Allow incoming chat commands to run between SSE events
             await new Promise<void>((resolve) => setImmediate(resolve));
 
-            const normalizedEvent = normalizeEvent(event, subscription.source, directory);
+            const normalizedEvent = normalizeGlobalEvent(event, directory);
             if (!normalizedEvent) {
               continue;
             }
 
-            if (normalizedEvent.event.type !== "server.connected") {
-              usefulEventCount++;
-            } else if (connectedSeen) {
+            if (normalizedEvent.event.type === "server.connected" && connectedSeen) {
               // The SDK's SSE client reconnected on its own: the loop never saw the drop.
               logger.info(`Event stream reconnected by the client for ${directory}`);
               streamDropped = true;
-            } else {
+            } else if (normalizedEvent.event.type === "server.connected") {
               connectedSeen = true;
             }
 
@@ -404,14 +322,6 @@ export async function subscribeToEvents(
 
         if (!isListening || activeDirectory !== directory || controller.signal.aborted) {
           break;
-        }
-
-        if (subscription.source === "global" && usefulEventCount === 0) {
-          useLegacyEventsOnce = true;
-          logger.warn(
-            `Global event stream ended without project events for ${directory}, falling back to project event stream`,
-          );
-          continue;
         }
 
         reconnectAttempt++;

@@ -13,9 +13,8 @@ const mocked = vi.hoisted(() => ({
   missing: new Set<string>(),
 }));
 vi.mock("../../../src/opencode/client.js", () => ({
-  opencodeServerVersion: "v2",
-  opencodeV2Client: { file: { list: mocked.fileList } },
   opencodeClient: {
+    file: { list: mocked.fileList },
     experimental: { session: { list: mocked.list } },
     session: { get: mocked.get, status: mocked.status },
     question: { list: mocked.questions },
@@ -51,20 +50,18 @@ describe("cross-project recent session snapshot", () => {
     mocked.status.mockResolvedValue({ data: {}, error: null });
     // A folder in `missing` fails its own listing with a 500 and is absent from its parent's.
     mocked.missing = new Set();
-    mocked.fileList
-      .mockReset()
-      .mockImplementation(async ({ path }: { path: string }) =>
-        mocked.missing.has(path)
-          ? {
-              data: undefined,
-              error: Object.assign(new Error("500"), {
-                name: "ClientError",
-                reason: "UnexpectedStatus",
-                cause: { status: 500 },
-              }),
-            }
-          : { data: [], error: undefined },
-      );
+    mocked.fileList.mockReset().mockImplementation(async ({ path }: { path: string }) =>
+      mocked.missing.has(path)
+        ? {
+            data: undefined,
+            error: Object.assign(new Error("500"), {
+              name: "ClientError",
+              reason: "UnexpectedStatus",
+              cause: { status: 500 },
+            }),
+          }
+        : { data: [], error: undefined },
+    );
   });
 
   it("leaves out sessions whose folder is gone without letting them take places", async () => {

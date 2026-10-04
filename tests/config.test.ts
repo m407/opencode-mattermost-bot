@@ -324,46 +324,31 @@ describe("config boolean env parsing", () => {
   });
 });
 
-describe("config OpenCode server version", () => {
+describe("OpenCode V2 configuration", () => {
   beforeEach(() => {
-    vi.stubEnv("MATTERMOST_BOT_TOKEN", "test-mattermost-token");
-    vi.stubEnv("MATTERMOST_ALLOWED_USER_ID", "a".repeat(26));
-    vi.stubEnv("OPENCODE_MODEL_PROVIDER", "test-provider");
-    vi.stubEnv("OPENCODE_MODEL_ID", "test-model");
-    vi.stubEnv("OPENCODE_API_URL", "");
+    vi.resetModules();
     vi.stubEnv("OPENCODE_SERVER_VERSION", "");
+    vi.stubEnv("OPENCODE_API_URL", "");
   });
-
-  it("uses V1 and the V1 default URL when the version is not set", async () => {
-    const config = await loadConfig();
-
-    expect(config.opencode.serverVersion).toBe("v1");
-    expect(config.opencode.apiUrl).toBe("http://localhost:4096");
-  });
-
-  it("uses the V2 default URL when V2 is selected", async () => {
-    vi.stubEnv("OPENCODE_SERVER_VERSION", " V2 ");
-
-    const config = await loadConfig();
-
-    expect(config.opencode.serverVersion).toBe("v2");
+  it("defaults to the supported server URL without a version selector", async () => {
+    const { config } = await import("../src/config.js");
     expect(config.opencode.apiUrl).toBe("http://127.0.0.1:49374");
+    expect(config.opencode).not.toHaveProperty("serverVersion");
   });
-
-  it("keeps an explicit API URL whatever the version", async () => {
-    vi.stubEnv("OPENCODE_SERVER_VERSION", "v2");
-    vi.stubEnv("OPENCODE_API_URL", "http://127.0.0.1:4096");
-
-    const config = await loadConfig();
-
-    expect(config.opencode.apiUrl).toBe("http://127.0.0.1:4096");
+  it("preserves an explicit server URL", async () => {
+    vi.stubEnv("OPENCODE_API_URL", "https://opencode.test");
+    expect((await import("../src/config.js")).config.opencode.apiUrl).toBe("https://opencode.test");
   });
-
-  it("falls back to V1 on an unrecognised version", async () => {
-    vi.stubEnv("OPENCODE_SERVER_VERSION", "2");
-
-    const config = await loadConfig();
-
-    expect(config.opencode.serverVersion).toBe("v1");
-  });
+  it.each(["v1", "unknown"])(
+    "rejects unsupported selector %s instead of falling back",
+    async (value) => {
+      vi.stubEnv("OPENCODE_SERVER_VERSION", value);
+      try {
+        await expect(import("../src/config.js")).rejects.toThrow("Only OpenCode V2");
+      } finally {
+        vi.stubEnv("OPENCODE_SERVER_VERSION", "");
+        vi.resetModules();
+      }
+    },
+  );
 });

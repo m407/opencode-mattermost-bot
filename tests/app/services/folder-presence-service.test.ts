@@ -5,7 +5,6 @@ import {
 } from "../../../src/app/services/folder-presence-service.js";
 
 const mocked = vi.hoisted(() => ({
-  serverVersion: "v2" as "v1" | "v2",
   fileListMock: vi.fn(),
   // Folders answering their own listing with a 500, and what each listing folder contains.
   failing: new Set<string>(),
@@ -13,10 +12,7 @@ const mocked = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../src/opencode/client.js", () => ({
-  get opencodeServerVersion() {
-    return mocked.serverVersion;
-  },
-  opencodeV2Client: { file: { list: mocked.fileListMock } },
+  opencodeClient: { file: { list: mocked.fileListMock } },
 }));
 
 vi.mock("../../../src/utils/logger.js", () => ({
@@ -33,7 +29,6 @@ function serverError(status: number): Error {
 
 describe("app/services/folder-presence-service", () => {
   beforeEach(() => {
-    mocked.serverVersion = "v2";
     mocked.failing = new Set();
     mocked.listings = new Map();
     mocked.fileListMock
@@ -102,13 +97,6 @@ describe("app/services/folder-presence-service", () => {
 
     it("never asks about the global project", async () => {
       expect(await checkFolderPresence("/")).toBe("present");
-      expect(mocked.fileListMock).not.toHaveBeenCalled();
-    });
-
-    it("never asks a V1 server", async () => {
-      mocked.serverVersion = "v1";
-
-      expect(await checkFolderPresence("/repo")).toBe("unknown");
       expect(mocked.fileListMock).not.toHaveBeenCalled();
     });
   });

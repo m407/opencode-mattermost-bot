@@ -70,16 +70,13 @@ function getOptionalBooleanEnvVar(key: string, defaultValue: boolean): boolean {
   return defaultValue;
 }
 
-export type OpencodeServerVersion = "v1" | "v2";
-
-const DEFAULT_OPENCODE_API_URLS: Record<OpencodeServerVersion, string> = {
-  v1: "http://localhost:4096",
-  v2: "http://127.0.0.1:49374",
-};
-
-function getOptionalOpencodeServerVersionEnvVar(key: string): OpencodeServerVersion {
-  const normalized = getEnvVar(key, false).trim().toLowerCase();
-  return normalized === "v2" ? "v2" : "v1";
+// Reject stale configuration instead of silently connecting to an unsupported server.
+function validateOpencodeVersion(): void {
+  const version = getEnvVar("OPENCODE_SERVER_VERSION", false).trim().toLowerCase();
+  if (version && version !== "v2")
+    throw new Error(
+      "Only OpenCode V2 is supported. Remove OPENCODE_SERVER_VERSION and configure a V2 server.",
+    );
 }
 
 function getOptionalMessageFormatModeEnvVar(
@@ -206,14 +203,12 @@ export function buildMattermostConfig() {
   };
 }
 
-const opencodeServerVersion = getOptionalOpencodeServerVersionEnvVar("OPENCODE_SERVER_VERSION");
+validateOpencodeVersion();
 
 export const config = {
   mattermost: buildMattermostConfig(),
   opencode: {
-    serverVersion: opencodeServerVersion,
-    apiUrl:
-      getEnvVar("OPENCODE_API_URL", false) || DEFAULT_OPENCODE_API_URLS[opencodeServerVersion],
+    apiUrl: getEnvVar("OPENCODE_API_URL", false) || "http://127.0.0.1:49374",
     username: getEnvVar("OPENCODE_SERVER_USERNAME", false) || "opencode",
     password: getEnvVar("OPENCODE_SERVER_PASSWORD", false),
     autoRestartEnabled: getOptionalBooleanEnvVar("OPENCODE_AUTO_RESTART_ENABLED", false),

@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
-import path from "node:path";
-import Database from "better-sqlite3";
-import { opencodeClient, opencodeServerVersion } from "../../opencode/client.js";
+import { opencodeClient } from "../../opencode/client.js";
 import { getSessionDirectoryCache, setSessionDirectoryCache } from "../stores/settings-store.js";
 import { isServerUnavailableError } from "../../utils/opencode-error.js";
 import { isRecord } from "../../utils/type-guards.js";
@@ -16,12 +14,8 @@ interface SessionDirectoryCacheData {
 
 const CACHE_VERSION = 1;
 const INITIAL_WARMUP_LIMIT = 1000;
-const INCREMENTAL_SYNC_LIMIT = 1000;
 const MAX_CACHED_DIRECTORIES = 10;
-const SYNC_SAFETY_WINDOW_MS = 60_000;
 const SYNC_COOLDOWN_MS = 60_000;
-const STORAGE_FALLBACK_SCAN_LIMIT = 200;
-const SQLITE_FALLBACK_QUERY_LIMIT = 200;
 
 const EMPTY_CACHE: SessionDirectoryCacheData = {
   version: CACHE_VERSION,
@@ -169,17 +163,6 @@ function upsertDirectory(worktree: string, lastUpdated: number): boolean {
   return true;
 }
 
-function buildListParams(options?: { force?: boolean }): { limit: number; start?: number } {
-  if (options?.force || cacheData.lastSyncedUpdatedAt === 0) {
-    return { limit: INITIAL_WARMUP_LIMIT };
-  }
-
-  return {
-    limit: INCREMENTAL_SYNC_LIMIT,
-    start: Math.max(0, cacheData.lastSyncedUpdatedAt - SYNC_SAFETY_WINDOW_MS),
-  };
-}
-
 function createVirtualProjectId(worktree: string): string {
   const hash = createHash("sha1").update(worktree).digest("hex").slice(0, 16);
   return `dir_${hash}`;
@@ -189,7 +172,7 @@ async function runSync(options?: { force?: boolean }): Promise<void> {
   await ensureCacheLoaded();
 
   const shouldPrune = options?.force || cacheData.lastSyncedUpdatedAt === 0;
-  const params = buildListParams(options);
+  const params = { limit: INITIAL_WARMUP_LIMIT };
   const { data: sessions, error } = await opencodeClient.session.list(params);
 
   if (error || !sessions) {
@@ -244,247 +227,8 @@ async function runSync(options?: { force?: boolean }): Promise<void> {
   );
 }
 
-function getStorageRootCandidates(pathInfo: { home?: string; state?: string }): string[] {
-  const candidates = new Set<string>();
-
-  if (pathInfo.home) {
-    candidates.add(path.join(pathInfo.home, ".local", "share", "opencode"));
-  }
-
-  if (pathInfo.state) {
-    const normalizedState = pathInfo.state.replace(/[\\/]+$/, "");
-    const lowerState = normalizedState.toLowerCase();
-    const marker = `${path.sep}state${path.sep}opencode`;
-    const lowerMarker = marker.toLowerCase();
-
-    if (lowerState.endsWith(lowerMarker)) {
-      const prefix = normalizedState.slice(0, normalizedState.length - marker.length);
-      candidates.add(path.join(prefix, "share", "opencode"));
-    }
-  }
-
-  return Array.from(candidates);
-}
-
-function getPathApi():
-  | {
-      get?: () => Promise<{
-        data?: { home?: string; state?: string };
-        error?: unknown;
-      }>;
-    }
-  | undefined {
-  return opencodeClient.path as
-    | {
-        get?: () => Promise<{
-          data?: { home?: string; state?: string };
-          error?: unknown;
-        }>;
-      }
-    | undefined;
-}
-
-async function getStorageRootsFromApi(): Promise<string[]> {
-  const pathApi = getPathApi();
-  if (!pathApi?.get) {
-    return [];
-  }
-
-  const { data: pathInfo, error } = await pathApi.get();
-  if (error || !pathInfo) {
-    return [];
-  }
-
-  return getStorageRootCandidates(pathInfo);
-}
-
-async function querySessionDirectoriesFromSqlite(
-  dbPath: string,
-): Promise<CachedSessionDirectory[] | null> {
-  try {
-    const db = new Database(dbPath, {
-      readonly: true,
-      fileMustExist: true,
-    });
-
-    try {
-      const rows = db
-        .prepare(
-          `
-            SELECT directory, MAX(time_updated) AS updated
-            FROM session
-            GROUP BY directory
-            ORDER BY updated DESC
-            LIMIT ?
-          `,
-        )
-        .all(SQLITE_FALLBACK_QUERY_LIMIT) as Array<{ directory?: string; updated?: number | null }>;
-
-      return rows
-        .filter(
-          (item): item is { directory: string; updated: number | null } =>
-            Boolean(item) && typeof item.directory === "string",
-        )
-        .map((item) => ({
-          worktree: item.directory,
-          lastUpdated:
-            typeof item.updated === "number" && Number.isFinite(item.updated) ? item.updated : 0,
-        }));
-    } finally {
-      db.close();
-    }
-  } catch (error) {
-    logger.debug(`[SessionCache] Failed to read sqlite fallback at ${dbPath}`, error);
-  }
-
-  return null;
-}
-
-async function ingestFromSqliteSessionDatabase(): Promise<void> {
-  await ensureCacheLoaded();
-
-  const fs = await import("node:fs/promises");
-  const roots = await getStorageRootsFromApi();
-
-  for (const root of roots) {
-    const dbPath = path.join(root, "opencode.db");
-
-    try {
-      await fs.access(dbPath);
-    } catch {
-      continue;
-    }
-
-    const rows = await querySessionDirectoriesFromSqlite(dbPath);
-    if (!rows || rows.length === 0) {
-      continue;
-    }
-
-    let changed = false;
-    let maxUpdated = cacheData.lastSyncedUpdatedAt;
-
-    for (const row of rows) {
-      if (upsertDirectory(row.worktree, row.lastUpdated)) {
-        changed = true;
-      }
-
-      if (row.lastUpdated > maxUpdated) {
-        maxUpdated = row.lastUpdated;
-      }
-    }
-
-    if (maxUpdated !== cacheData.lastSyncedUpdatedAt) {
-      cacheData.lastSyncedUpdatedAt = maxUpdated;
-      changed = true;
-    }
-
-    if (changed) {
-      await queuePersist();
-    }
-
-    logger.debug(
-      `[SessionCache] SQLite fallback loaded: db=${dbPath}, rows=${rows.length}, directories=${cacheData.directories.length}`,
-    );
-
-    return;
-  }
-}
-
-async function ingestFromGlobalSessionStorage(): Promise<void> {
-  await ensureCacheLoaded();
-
-  const fs = await import("node:fs/promises");
-  const candidates = await getStorageRootsFromApi();
-
-  for (const storageRoot of candidates) {
-    const globalDir = path.join(storageRoot, "storage", "session", "global");
-
-    try {
-      const entries = await fs.readdir(globalDir, { withFileTypes: true });
-      const sessionFiles = entries.filter(
-        (entry) => entry.isFile() && entry.name.endsWith(".json"),
-      );
-
-      const withMtime = await Promise.all(
-        sessionFiles.map(async (entry) => {
-          const fullPath = path.join(globalDir, entry.name);
-          const stat = await fs.stat(fullPath);
-          return { fullPath, mtimeMs: stat.mtimeMs };
-        }),
-      );
-
-      const sorted = withMtime
-        .sort((a, b) => b.mtimeMs - a.mtimeMs)
-        .slice(0, STORAGE_FALLBACK_SCAN_LIMIT);
-
-      let changed = false;
-      let maxUpdated = cacheData.lastSyncedUpdatedAt;
-
-      for (const file of sorted) {
-        try {
-          const raw = await fs.readFile(file.fullPath, "utf-8");
-          const session = JSON.parse(raw) as {
-            directory?: string;
-            time?: { updated?: number };
-          };
-
-          if (!session.directory) {
-            continue;
-          }
-
-          const updated = session.time?.updated ?? Math.trunc(file.mtimeMs);
-          if (upsertDirectory(session.directory, updated)) {
-            changed = true;
-          }
-
-          if (updated > maxUpdated) {
-            maxUpdated = updated;
-          }
-        } catch {
-          // Ignore malformed session files.
-        }
-      }
-
-      if (maxUpdated !== cacheData.lastSyncedUpdatedAt) {
-        cacheData.lastSyncedUpdatedAt = maxUpdated;
-        changed = true;
-      }
-
-      if (changed) {
-        await queuePersist();
-      }
-
-      logger.debug(
-        `[SessionCache] Storage fallback loaded: root=${storageRoot}, scanned=${sorted.length}, directories=${cacheData.directories.length}`,
-      );
-
-      return;
-    } catch {
-      // Try next candidate path.
-    }
-  }
-}
-
 export async function warmupSessionDirectoryCache(): Promise<void> {
   await syncSessionDirectoryCache({ force: true });
-
-  // The on-disk fallbacks read V1's own session tables; a V2 server keeps its sessions
-  // elsewhere, so there the cache comes from the API alone.
-  if (opencodeServerVersion === "v2") {
-    return;
-  }
-
-  try {
-    await ingestFromSqliteSessionDatabase();
-  } catch (error) {
-    logger.warn("[SessionCache] Failed sqlite fallback warmup", error);
-  }
-
-  try {
-    await ingestFromGlobalSessionStorage();
-  } catch (error) {
-    logger.warn("[SessionCache] Failed storage fallback warmup", error);
-  }
 }
 
 export async function syncSessionDirectoryCache(options?: { force?: boolean }): Promise<void> {

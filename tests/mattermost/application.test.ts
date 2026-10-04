@@ -4,15 +4,10 @@ import { MattermostClient } from "../../src/mattermost/client.js";
 import { MattermostBot } from "../../src/mattermost/bot.js";
 import { config } from "../../src/config.js";
 import * as settings from "../../src/app/stores/settings-store.js";
-import { opencodeClient, opencodeV2Client } from "../../src/opencode/client.js";
+import { opencodeClient } from "../../src/opencode/client.js";
 import { subscribeToEvents } from "../../src/opencode/events.js";
 import type { EventEnvelope } from "../../src/opencode/events.js";
 
-vi.mock("../../src/opencode/client.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../src/opencode/client.js")>()),
-  opencodeServerVersion: "v2",
-  opencodeV2Client: { session: { promptAsync: vi.fn() } },
-}));
 vi.mock("../../src/opencode/events.js", () => ({
   subscribeToEvents: vi.fn().mockResolvedValue(undefined),
   stopEventListening: vi.fn(),
@@ -288,15 +283,12 @@ describe("Mattermost application", () => {
     );
   });
   it("steers a busy V2 session through its server inbox", async () => {
-    const version = config.opencode.serverVersion;
-    config.opencode.serverVersion = "v2";
     settings.setPromptQueueMode("steer");
     const steer = vi
-      .spyOn(opencodeV2Client.session, "promptAsync")
+      .spyOn(opencodeClient.session, "promptAsync")
       .mockResolvedValue({ data: { inboxID: "inbox-1" } } as never);
     await accept(post("first"));
     await accept(post("change direction"));
-    config.opencode.serverVersion = version;
     expect(steer).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionID: session.id,
@@ -304,6 +296,6 @@ describe("Mattermost application", () => {
         parts: [{ type: "text", text: "change direction" }],
       }),
     );
-    expect(opencodeClient.session.promptAsync).toHaveBeenCalledTimes(1);
+    expect(opencodeClient.session.promptAsync).toHaveBeenCalledTimes(2);
   });
 });

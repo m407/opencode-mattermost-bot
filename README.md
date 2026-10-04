@@ -1,14 +1,14 @@
 # OpenCode Mattermost Bot
 
-Run and monitor OpenCode coding tasks from a Mattermost channel or thread. The bot supports one configured user and channel, OpenCode V1/V2, streamed Markdown replies, tool progress, permission requests, questions, sessions, files, audio, and scheduled tasks.
+Run and monitor OpenCode coding tasks from a Mattermost channel or thread. The bot supports one configured user and channel, OpenCode V2, streamed Markdown replies, tool progress, permission requests, questions, sessions, files, audio, and scheduled tasks.
 
-Requires Node.js 22.14+ and a running OpenCode server. Build and type checking use **TypeScript 7.0.2**; linting uses **Oxlint 1.86.0**.
+Requires Node.js 22.14+ and a running OpenCode 2.x server. Build and type checking use **TypeScript 7.0.2**; linting uses **Oxlint 1.86.0**.
 
 ## Setup
 
 1. Create a Mattermost bot account under **Integrations → Bot Accounts**, enable access tokens, and add the bot to your channel. Give it permission to read/write posts and upload files; enable pinning if you use the dashboard.
 2. Copy `.env.example` to `.env`. Set `MATTERMOST_URL`, `MATTERMOST_BOT_TOKEN`, `MATTERMOST_ALLOWED_USER_ID`, and `MATTERMOST_CHANNEL_ID`. User/channel IDs are the native 26-character IDs, not names. The bot must be able to access both the Mattermost REST API and WebSocket endpoint.
-3. Set `OPENCODE_MODEL_PROVIDER`, `OPENCODE_MODEL_ID`, `OPENCODE_SERVER_VERSION` (`v1` or `v2`), and your server URL/authentication. V1 defaults to `http://localhost:4096`; V2 defaults to `http://127.0.0.1:49374`. For V2, obtain the password using `opencode service get password`.
+3. Set `OPENCODE_MODEL_PROVIDER`, `OPENCODE_MODEL_ID`, and your server URL/authentication. The default URL is `http://127.0.0.1:49374`. Obtain the password using `opencode service get password`.
 4. Run:
 
 ```sh
@@ -29,6 +29,8 @@ node dist/cli.js start --daemon
 
 Use `node dist/cli.js --help` for the full CLI. Installed packages expose `opencode-mattermost`. Persistent state and logs live in `OPENCODE_MATTERMOST_HOME`, or the platform configuration directory for installed mode. Source mode defaults to the working directory.
 
+When upgrading, remove `OPENCODE_SERVER_VERSION` from your environment and configure a V2 server. The setup wizard removes the obsolete selector from `.env`. Replace `promptQueueEnabled` in `INITIAL_SETTINGS_PRESET` with `promptQueueMode` (`"off"`, `"queue"`, or `"steer"`; default: `"steer"`).
+
 ## Commands
 
 Commands start with `!`. An optional native `/opencode` command and interactive buttons are described in [Mattermost integration](docs/MATTERMOST_ADAPTER.md). Text commands work without an inbound HTTP endpoint.
@@ -44,7 +46,7 @@ Commands start with `!`. An optional native `/opencode` command and interactive 
 | `!abort`, `!detach`                                           | Abort the task, or stop following it while it continues on the server        |
 | `!commands`, `!skills`, `!<custom-command> [arguments]`       | Discover and run OpenCode commands and skills                                |
 | `!mcps`, `!mcps <name> on\|off`                               | Inspect and toggle MCP servers                                               |
-| `!compact`, `!reload`                                         | Compact context; reload configuration on V2                                  |
+| `!compact`, `!reload`                                         | Compact context; reload configuration                                  |
 | `!settings`                                                   | Thinking/tool display, footer, pinned dashboard, diff files, queue and audio |
 | `!ls [path] [--page N]`, `!download <path>`, `!attach <path>` | Browse local files, send a file, attach text to the next prompt              |
 | `!task <schedule> \| <prompt>`, `!tasklist`                   | Create and manage scheduled tasks                                            |
