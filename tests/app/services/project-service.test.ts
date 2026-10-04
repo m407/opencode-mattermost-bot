@@ -15,9 +15,8 @@ const { projectListMock, fileListMock, cachedSessionProjectsMock, configMock } =
 }));
 
 vi.mock("../../../src/opencode/client.js", () => ({
-  opencodeServerVersion: "v2",
-  opencodeV2Client: { file: { list: fileListMock } },
   opencodeClient: {
+    file: { list: fileListMock },
     project: {
       list: projectListMock,
     },

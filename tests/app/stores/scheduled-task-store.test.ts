@@ -48,15 +48,15 @@ describe("app/stores/scheduled-task-store", () => {
   let tempHome: string;
 
   beforeEach(async () => {
-    tempHome = await mkdtemp(path.join(os.tmpdir(), "opencode-telegram-task-store-"));
-    process.env.OPENCODE_TELEGRAM_HOME = tempHome;
+    tempHome = await mkdtemp(path.join(os.tmpdir(), "opencode-mattermost-task-store-"));
+    process.env.OPENCODE_MATTERMOST_HOME = tempHome;
     setRuntimeMode("installed");
     __resetSettingsForTests();
     await loadSettings();
   });
 
   afterEach(async () => {
-    delete process.env.OPENCODE_TELEGRAM_HOME;
+    delete process.env.OPENCODE_MATTERMOST_HOME;
     __resetSettingsForTests();
     await rm(tempHome, { recursive: true, force: true });
   });
@@ -112,12 +112,12 @@ describe("app/stores/scheduled-task-store", () => {
     await registerScheduledTaskSessionIgnore("fresh-session", new Date("2026-03-16T10:00:00.000Z"));
     await registerScheduledTaskSessionIgnore("stale-session", new Date("2026-03-15T09:59:59.000Z"));
 
-    expect(isScheduledTaskSessionIgnored("fresh-session", new Date("2026-03-16T12:00:00.000Z"))).toBe(
-      true,
-    );
-    expect(isScheduledTaskSessionIgnored("stale-session", new Date("2026-03-16T12:00:00.000Z"))).toBe(
-      false,
-    );
+    expect(
+      isScheduledTaskSessionIgnored("fresh-session", new Date("2026-03-16T12:00:00.000Z")),
+    ).toBe(true);
+    expect(
+      isScheduledTaskSessionIgnored("stale-session", new Date("2026-03-16T12:00:00.000Z")),
+    ).toBe(false);
 
     const removed = await cleanupScheduledTaskSessionIgnores(new Date("2026-03-16T12:00:00.000Z"));
 
@@ -133,8 +133,8 @@ describe("app/stores/scheduled-task-store", () => {
 
     await removeScheduledTaskSessionIgnore("fresh-session");
 
-    expect(isScheduledTaskSessionIgnored("fresh-session", new Date("2026-03-16T12:00:00.000Z"))).toBe(
-      false,
-    );
+    expect(
+      isScheduledTaskSessionIgnored("fresh-session", new Date("2026-03-16T12:00:00.000Z")),
+    ).toBe(false);
   });
 });

@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  extractErrorMessage,
-  isServerUnavailableError,
-} from "../../src/utils/opencode-error.js";
+import { extractErrorMessage, isServerUnavailableError } from "../../src/utils/opencode-error.js";
 
 describe("utils/opencode-error", () => {
   describe("extractErrorMessage", () => {
@@ -23,7 +20,11 @@ describe("utils/opencode-error", () => {
 
     it("falls through whitespace-only values to the next candidate", () => {
       expect(
-        extractErrorMessage({ name: "UnknownError", data: { message: "   " }, message: "fallback" }),
+        extractErrorMessage({
+          name: "UnknownError",
+          data: { message: "   " },
+          message: "fallback",
+        }),
       ).toBe("fallback");
     });
 
@@ -55,9 +56,9 @@ describe("utils/opencode-error", () => {
     });
 
     it("walks plain-object causes and code fields", () => {
-      expect(
-        isServerUnavailableError({ message: "boom", cause: { code: "ECONNREFUSED" } }),
-      ).toBe(true);
+      expect(isServerUnavailableError({ message: "boom", cause: { code: "ECONNREFUSED" } })).toBe(
+        true,
+      );
     });
 
     it("returns false for unrelated errors and empty values", () => {

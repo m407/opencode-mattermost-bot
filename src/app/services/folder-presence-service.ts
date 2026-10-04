@@ -1,5 +1,5 @@
 import path from "node:path";
-import { opencodeServerVersion, opencodeV2Client } from "../../opencode/client.js";
+import { opencodeClient } from "../../opencode/client.js";
 import { logger } from "../../utils/logger.js";
 
 /**
@@ -33,7 +33,7 @@ function isServerError(error: unknown): boolean {
 }
 
 async function listFolder(folder: string): Promise<FolderListing> {
-  const { data, error } = await opencodeV2Client.file.list({ path: folder });
+  const { data, error } = await opencodeClient.file.list({ path: folder });
   if (data) {
     return data;
   }
@@ -53,9 +53,6 @@ function namesMatch(pathStyle: typeof path.win32 | typeof path.posix, left: stri
 export async function checkFolderPresence(folder: string): Promise<FolderPresence> {
   if (folder === GLOBAL_PROJECT_FOLDER) {
     return "present";
-  }
-  if (opencodeServerVersion !== "v2") {
-    return "unknown";
   }
 
   const own = await listFolder(folder);

@@ -45,22 +45,6 @@ function getOptionalPositiveIntEnvVar(key: string, defaultValue: number): number
   return parsedValue;
 }
 
-// Like getOptionalPositiveIntEnvVar, but also accepts 0 (used to disable a feature).
-function getOptionalNonNegativeIntEnvVar(key: string, defaultValue: number): number {
-  const value = getEnvVar(key, false);
-
-  if (!value) {
-    return defaultValue;
-  }
-
-  const parsedValue = Number.parseInt(value, 10);
-  if (Number.isNaN(parsedValue) || parsedValue < 0) {
-    return defaultValue;
-  }
-
-  return parsedValue;
-}
-
 function getOptionalLocaleEnvVar(key: string, defaultValue: Locale): Locale {
   const value = getEnvVar(key, false);
   return normalizeLocale(value, defaultValue);
@@ -86,16 +70,13 @@ function getOptionalBooleanEnvVar(key: string, defaultValue: boolean): boolean {
   return defaultValue;
 }
 
-export type OpencodeServerVersion = "v1" | "v2";
-
-const DEFAULT_OPENCODE_API_URLS: Record<OpencodeServerVersion, string> = {
-  v1: "http://localhost:4096",
-  v2: "http://127.0.0.1:49374",
-};
-
-function getOptionalOpencodeServerVersionEnvVar(key: string): OpencodeServerVersion {
-  const normalized = getEnvVar(key, false).trim().toLowerCase();
-  return normalized === "v2" ? "v2" : "v1";
+// Reject stale configuration instead of silently connecting to an unsupported server.
+function validateOpencodeVersion(): void {
+  const version = getEnvVar("OPENCODE_SERVER_VERSION", false).trim().toLowerCase();
+  if (version && version !== "v2")
+    throw new Error(
+      "Only OpenCode V2 is supported. Remove OPENCODE_SERVER_VERSION and configure a V2 server.",
+    );
 }
 
 function getOptionalMessageFormatModeEnvVar(
@@ -125,14 +106,10 @@ export function parseInitialSettingsPreset(): Record<string, unknown> {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error(
-      "INITIAL_SETTINGS_PRESET contains invalid JSON. Fix or unset the variable.",
-    );
+    throw new Error("INITIAL_SETTINGS_PRESET contains invalid JSON. Fix or unset the variable.");
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error(
-      "INITIAL_SETTINGS_PRESET must be a JSON object.",
-    );
+    throw new Error("INITIAL_SETTINGS_PRESET must be a JSON object.");
   }
   return parsed as Record<string, unknown>;
 }
@@ -174,53 +151,64 @@ function getOptionalSttRequestFormatEnvVar(
   return defaultValue;
 }
 
-export function buildTelegramConfig(): {
-  token: string;
-  allowedUserId: number;
-  proxyUrl: string;
-  apiRoot: string;
-  proxySecret: string;
-  forceIpv4: boolean;
-} {
-  const proxyUrl = getEnvVar("TELEGRAM_PROXY_URL", false);
-  // grammY rejects an apiRoot ending with `/`, so normalize once at config
-  // load instead of leaking the concern into every consumer.
-  const apiRoot = getEnvVar("TELEGRAM_API_ROOT", false).replace(/\/+$/, "");
-  const proxySecret = getEnvVar("TELEGRAM_PROXY_SECRET", false);
-  const forceIpv4 = getOptionalBooleanEnvVar("TELEGRAM_FORCE_IPV4", false);
-
-  if (proxyUrl && apiRoot) {
+export function buildMattermostConfig() {
+  const url = getEnvVar("MATTERMOST_URL");
+  const server = new URL(url);
+  if (
+    !["http:", "https:"].includes(server.protocol) ||
+    server.username ||
+    server.password ||
+    server.search ||
+    server.hash
+  ) {
     throw new Error(
-      "TELEGRAM_PROXY_URL and TELEGRAM_API_ROOT are alternative connectivity modes and cannot be used together. " +
-        "TELEGRAM_PROXY_URL tunnels TCP through a SOCKS/HTTP forward proxy; " +
-        "TELEGRAM_API_ROOT routes API calls through an HTTPS reverse proxy. Pick one.",
+      "MATTERMOST_URL must be an HTTP(S) server URL without credentials, query, or fragment",
     );
   }
-  if (proxySecret && !apiRoot) {
-    throw new Error(
-      "TELEGRAM_PROXY_SECRET requires TELEGRAM_API_ROOT to be set. " +
-        "Without a custom API root, the secret header would be sent to api.telegram.org.",
-    );
+  const allowedUserId = getEnvVar("MATTERMOST_ALLOWED_USER_ID");
+  const channelId = getEnvVar("MATTERMOST_CHANNEL_ID");
+  if (!/^[a-z0-9]{26}$/.test(allowedUserId) || !/^[a-z0-9]{26}$/.test(channelId)) {
+    throw new Error("Mattermost user and channel IDs must be 26-character IDs");
   }
-
+  const callbackUrl = getEnvVar("MATTERMOST_CALLBACK_URL", false).replace(/\/+$/, "");
+  const callbackSecret = getEnvVar("MATTERMOST_CALLBACK_SECRET", false);
+  if (callbackUrl) {
+    const callback = new URL(callbackUrl);
+    if (
+      !["https:", "http:"].includes(callback.protocol) ||
+      callback.username ||
+      callback.password ||
+      callback.search ||
+      callback.hash
+    ) {
+      throw new Error(
+        "MATTERMOST_CALLBACK_URL must be an HTTP(S) URL without credentials, query, or fragment",
+      );
+    }
+    if (callbackSecret.length < 32)
+      throw new Error("MATTERMOST_CALLBACK_SECRET must contain at least 32 characters");
+  }
+  const port = getOptionalPositiveIntEnvVar("MATTERMOST_CALLBACK_PORT", 8080);
+  if (port > 65535) throw new Error("Invalid MATTERMOST_CALLBACK_PORT");
   return {
-    token: getEnvVar("TELEGRAM_BOT_TOKEN"),
-    allowedUserId: parseInt(getEnvVar("TELEGRAM_ALLOWED_USER_ID"), 10),
-    proxyUrl,
-    apiRoot,
-    proxySecret,
-    forceIpv4,
+    url,
+    token: getEnvVar("MATTERMOST_BOT_TOKEN"),
+    allowedUserId,
+    channelId,
+    callbackUrl,
+    callbackSecret,
+    callbackHost: getEnvVar("MATTERMOST_CALLBACK_HOST", false) || "127.0.0.1",
+    callbackPort: port,
+    teamId: getEnvVar("MATTERMOST_TEAM_ID", false),
   };
 }
 
-const opencodeServerVersion = getOptionalOpencodeServerVersionEnvVar("OPENCODE_SERVER_VERSION");
+validateOpencodeVersion();
 
 export const config = {
-  telegram: buildTelegramConfig(),
+  mattermost: buildMattermostConfig(),
   opencode: {
-    serverVersion: opencodeServerVersion,
-    apiUrl:
-      getEnvVar("OPENCODE_API_URL", false) || DEFAULT_OPENCODE_API_URLS[opencodeServerVersion],
+    apiUrl: getEnvVar("OPENCODE_API_URL", false) || "http://127.0.0.1:49374",
     username: getEnvVar("OPENCODE_SERVER_USERNAME", false) || "opencode",
     password: getEnvVar("OPENCODE_SERVER_PASSWORD", false),
     autoRestartEnabled: getOptionalBooleanEnvVar("OPENCODE_AUTO_RESTART_ENABLED", false),
@@ -244,17 +232,10 @@ export const config = {
       "SCHEDULED_TASK_EXECUTION_TIMEOUT_MINUTES",
       120,
     ),
-    scheduledTaskNotificationsSilent: getOptionalBooleanEnvVar(
-      "SCHEDULED_TASK_DISABLE_NOTIFICATION",
-      false,
-    ),
     bashToolDisplayMaxLength: getOptionalPositiveIntEnvVar("BASH_TOOL_DISPLAY_MAX_LENGTH", 128),
     locale: getOptionalLocaleEnvVar("BOT_LOCALE", "en"),
     trackBackgroundSessions: getOptionalBooleanEnvVar("TRACK_BACKGROUND_SESSIONS", true),
     messageFormatMode: getOptionalMessageFormatModeEnvVar("MESSAGE_FORMAT_MODE", "markdown"),
-    // Buffer near-limit text for this window so Telegram-split chunks can be merged.
-    // Short messages are processed immediately; 0 disables merging entirely.
-    messageMergeWindowMs: getOptionalNonNegativeIntEnvVar("MESSAGE_MERGE_WINDOW_MS", 1500),
     initialSettingsPreset: parseInitialSettingsPreset(),
     excludedProjectPaths: getOptionalPathListEnvVar("PROJECTS_EXCLUDED_PATHS"),
   },
@@ -288,8 +269,7 @@ export const config = {
           : provider === "edge"
             ? "en-US-EmmaMultilingualNeural"
             : "alloy";
-    const defaultModel =
-      provider === "elevenlabs" ? "eleven_flash_v2_5" : "gpt-4o-mini-tts";
+    const defaultModel = provider === "elevenlabs" ? "eleven_flash_v2_5" : "gpt-4o-mini-tts";
     return {
       apiUrl: getEnvVar("TTS_API_URL", false),
       apiKey: getEnvVar("TTS_API_KEY", false),

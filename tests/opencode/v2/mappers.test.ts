@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { FormInfo, ModelInfo, SessionMessageInfo } from "@opencode/client";
 import {
   toFormAnswer,
-  toV1Message,
-  toV1Providers,
-  toV1Question,
-  toV1ToolInput,
-  toV1ToolMetadata,
-  toV1ToolName,
+  toMessage,
+  toProviders,
+  toQuestion,
+  toToolInput,
+  toToolMetadata,
+  toToolName,
   toV2PromptInput,
 } from "../../../src/opencode/v2/mappers.js";
 
@@ -17,23 +17,23 @@ function createForm(fields: FormInfo["fields"]): FormInfo {
 
 describe("opencode/v2/mappers", () => {
   it("names V2 tools the way the bot's formatters know them", () => {
-    expect(toV1ToolName("shell")).toBe("bash");
-    expect(toV1ToolName("subagent")).toBe("task");
-    expect(toV1ToolName("patch")).toBe("apply_patch");
-    expect(toV1ToolName("read")).toBe("read");
+    expect(toToolName("shell")).toBe("bash");
+    expect(toToolName("subagent")).toBe("task");
+    expect(toToolName("patch")).toBe("apply_patch");
+    expect(toToolName("read")).toBe("read");
   });
 
-  it("adds the V1 input fields while keeping the V2 ones", () => {
-    expect(toV1ToolInput("read", { path: "a.txt" })).toEqual({ path: "a.txt", filePath: "a.txt" });
-    expect(toV1ToolInput("task", { agent: "explore", prompt: "look" })).toMatchObject({
+  it("adds the domain input fields while keeping the V2 ones", () => {
+    expect(toToolInput("read", { path: "a.txt" })).toEqual({ path: "a.txt", filePath: "a.txt" });
+    expect(toToolInput("task", { agent: "explore", prompt: "look" })).toMatchObject({
       subagent_type: "explore",
     });
-    expect(toV1ToolInput("apply_patch", { patch: "*** Begin Patch" })).toMatchObject({
+    expect(toToolInput("apply_patch", { patch: "*** Begin Patch" })).toMatchObject({
       patchText: "*** Begin Patch",
     });
   });
 
-  it("adds the V1 file-change metadata while keeping the V2 files", () => {
+  it("adds the domain file-change metadata while keeping the V2 files", () => {
     const v2File = {
       file: "src/a.ts",
       patch: "Index: src/a.ts\n+one",
@@ -42,29 +42,32 @@ describe("opencode/v2/mappers", () => {
       deletions: 0,
     };
 
-    expect(toV1ToolMetadata("edit", { files: [v2File], truncated: false })).toEqual({
+    expect(toToolMetadata("edit", { files: [v2File], truncated: false })).toEqual({
       files: [v2File],
       truncated: false,
       diff: v2File.patch,
       filediff: { file: "src/a.ts", patch: v2File.patch, additions: 1, deletions: 0 },
     });
-    expect(
-      toV1ToolMetadata("apply_patch", { files: [v2File, { ...v2File, file: "b.ts" }] }),
-    ).toEqual({
-      files: [
-        { ...v2File, filePath: "src/a.ts", relativePath: "src/a.ts" },
-        { ...v2File, file: "b.ts", filePath: "b.ts", relativePath: "b.ts" },
-      ],
-    });
+    expect(toToolMetadata("apply_patch", { files: [v2File, { ...v2File, file: "b.ts" }] })).toEqual(
+      {
+        files: [
+          { ...v2File, filePath: "src/a.ts", relativePath: "src/a.ts" },
+          { ...v2File, file: "b.ts", filePath: "b.ts", relativePath: "b.ts" },
+        ],
+      },
+    );
 
-    const v1Patch = { diff: "all", files: [{ filePath: "D:/repo/a.ts", relativePath: "a.ts" }] };
-    expect(toV1ToolMetadata("apply_patch", v1Patch)).toEqual(v1Patch);
-    const v1Edit = { diff: "d", filediff: { file: "a.ts", additions: 1, deletions: 0 } };
-    expect(toV1ToolMetadata("edit", v1Edit)).toBe(v1Edit);
-    expect(toV1ToolMetadata("read", { truncated: false })).toEqual({ truncated: false });
+    const normalizedPatch = {
+      diff: "all",
+      files: [{ filePath: "D:/repo/a.ts", relativePath: "a.ts" }],
+    };
+    expect(toToolMetadata("apply_patch", normalizedPatch)).toEqual(normalizedPatch);
+    const normalizedEdit = { diff: "d", filediff: { file: "a.ts", additions: 1, deletions: 0 } };
+    expect(toToolMetadata("edit", normalizedEdit)).toBe(normalizedEdit);
+    expect(toToolMetadata("read", { truncated: false })).toEqual({ truncated: false });
   });
 
-  it("carries the V1 file-change metadata into restored patch parts", () => {
+  it("carries the domain file-change metadata into restored patch parts", () => {
     const message = {
       type: "assistant",
       id: "msg-1",
@@ -93,9 +96,7 @@ describe("opencode/v2/mappers", () => {
       ],
     } as unknown as SessionMessageInfo;
 
-    const part = toV1Message(message, "ses-1", "D:/repo")?.parts.find(
-      (item) => item.type === "tool",
-    );
+    const part = toMessage(message, "ses-1", "D:/repo")?.parts.find((item) => item.type === "tool");
 
     expect(part).toMatchObject({
       tool: "apply_patch",
@@ -130,7 +131,7 @@ describe("opencode/v2/mappers", () => {
       },
     ]);
 
-    const request = toV1Question(form);
+    const request = toQuestion(form);
 
     expect(request).toMatchObject({ id: "form-1", sessionID: "ses-1" });
     expect(request.questions.map((question) => question.header)).toEqual([
@@ -169,7 +170,7 @@ describe("opencode/v2/mappers", () => {
       { key: "note", type: "string" },
     ]);
 
-    const [provider, color, tags, ok, note] = toV1Question(form).questions;
+    const [provider, color, tags, ok, note] = toQuestion(form).questions;
 
     expect(provider?.options).toEqual([
       { label: "Allow search via Exa", description: "Default", value: "allow" },
@@ -264,7 +265,7 @@ describe("opencode/v2/mappers", () => {
     });
   });
 
-  it("maps assistant messages into V1 messages with parts", () => {
+  it("maps assistant messages into domain messages with parts", () => {
     const message = {
       id: "msg-1",
       type: "assistant",
@@ -290,7 +291,7 @@ describe("opencode/v2/mappers", () => {
       ],
     } as unknown as SessionMessageInfo;
 
-    const mapped = toV1Message(message, "ses-1", "D:/repo");
+    const mapped = toMessage(message, "ses-1", "D:/repo");
 
     expect(mapped?.info).toMatchObject({
       id: "msg-1",
@@ -309,17 +310,17 @@ describe("opencode/v2/mappers", () => {
     });
   });
 
-  it("drops V2 message kinds that have no V1 form", () => {
+  it("drops V2 message kinds that have no domain form", () => {
     const idle = {
       id: "msg-2",
       type: "idle",
       time: { created: 1 },
     } as unknown as SessionMessageInfo;
 
-    expect(toV1Message(idle, "ses-1", "D:/repo")).toBeNull();
+    expect(toMessage(idle, "ses-1", "D:/repo")).toBeNull();
   });
 
-  it("folds enabled V2 models into the V1 providers catalog", () => {
+  it("folds enabled V2 models into the domain providers catalog", () => {
     const model = {
       id: "gpt",
       modelID: "gpt-upstream",
@@ -335,7 +336,7 @@ describe("opencode/v2/mappers", () => {
     } as unknown as ModelInfo;
     const disabled = { ...model, id: "old", enabled: false } as ModelInfo;
 
-    const providers = toV1Providers([{ id: "openai", name: "OpenAI" }], [model, disabled]);
+    const providers = toProviders([{ id: "openai", name: "OpenAI" }], [model, disabled]);
 
     expect(providers).toHaveLength(1);
     expect(providers[0]?.name).toBe("OpenAI");

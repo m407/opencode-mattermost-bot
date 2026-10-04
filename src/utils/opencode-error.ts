@@ -25,7 +25,7 @@ export function isExpectedOpencodeUnavailableError(error: unknown): boolean {
   );
 }
 
-/** A "not found" answer from OpenCode (V1 body, or the V2 adapter's equivalent). */
+/** A "not found" answer from OpenCode normalized by the client. */
 export function isOpencodeNotFoundError(error: unknown): boolean {
   return isRecord(error) && error.name === "NotFoundError";
 }

@@ -1,30 +1,30 @@
-import type { Event, Part, Session, ToolState } from "@opencode-ai/sdk/v2";
+import type { Event, Part, Session, ToolState } from "../types.js";
 import type { FormInfo, OpenCodeEvent, SessionInboxItem } from "@opencode/client";
 import {
   toolContentText,
-  toV1ErrorPayload,
-  toV1Permission,
-  toV1Question,
-  toV1ToolInput,
-  toV1ToolMetadata,
-  toV1ToolName,
+  toErrorPayload,
+  toPermission,
+  toQuestion,
+  toToolInput,
+  toToolMetadata,
+  toToolName,
 } from "./mappers.js";
 
-/** A translated event in the envelope shape of the V1 global event stream. */
-export interface V1GlobalEvent {
+/** A translated event in the envelope shape of the normalized global event stream. */
+export interface GlobalEvent {
   directory?: string;
   payload: Event;
 }
 
 type ToolInput = Record<string, unknown>;
 
-/** A V1 idle, plus the mark of an execution that was interrupted rather than finished. */
+/** A normalized idle, plus the mark of an execution that was interrupted rather than finished. */
 type IdleEventProperties = Extract<Event, { type: "session.idle" }>["properties"] & {
   interrupted?: true;
 };
 
 /**
- * A V1 connect, plus whether the server behind it is another process than the one the
+ * A normalized connect, plus whether the server behind it is another process than the one the
  * previous connection reached; absent when that cannot be told.
  */
 export interface ConnectedEventProperties {
@@ -71,7 +71,7 @@ export interface V2EventTranslatorOptions {
 }
 
 /**
- * Translates the V2 event stream into the V1 events the bot consumes. One translator
+ * Translates the V2 event stream into the normalized events the bot consumes. One translator
  * belongs to one subscription, so partial state never leaks across reconnects. Inbox
  * items are the exception when the caller passes them in: a message queued before a
  * reconnect is delivered on the next subscription, and its pickup needs the item.
@@ -119,7 +119,7 @@ export function createV2EventTranslator(options: V2EventTranslatorOptions = {}) 
       };
       cost?: number;
       finish?: string;
-      error?: ReturnType<typeof toV1ErrorPayload>;
+      error?: ReturnType<typeof toErrorPayload>;
     } = {},
   ): Event => {
     const state = messages.get(messageID);
@@ -185,7 +185,7 @@ export function createV2EventTranslator(options: V2EventTranslatorOptions = {}) 
   };
 
   const idleEvents = (sessionID: string, id: string, interrupted = false): Event[] => {
-    // V1 has no way to say a turn was stopped: the idle of an interrupted execution carries it.
+    // normalized has no way to say a turn was stopped: the idle of an interrupted execution carries it.
     const idleProperties: IdleEventProperties = interrupted
       ? { sessionID, interrupted: true }
       : { sessionID };
@@ -336,7 +336,7 @@ export function createV2EventTranslator(options: V2EventTranslatorOptions = {}) 
             type: "session.error",
             properties: {
               sessionID: event.data.sessionID,
-              error: toV1ErrorPayload(event.data.error),
+              error: toErrorPayload(event.data.error),
             },
           },
           ...idleEvents(event.data.sessionID, event.id),
@@ -471,7 +471,7 @@ export function createV2EventTranslator(options: V2EventTranslatorOptions = {}) 
         const translated = [
           assistantInfo(data.assistantMessageID, {
             completed: created,
-            error: toV1ErrorPayload(data.error),
+            error: toErrorPayload(data.error),
             ...(data.tokens ? { tokens: data.tokens } : {}),
             ...(data.cost !== undefined ? { cost: data.cost } : {}),
           }),
@@ -541,7 +541,7 @@ export function createV2EventTranslator(options: V2EventTranslatorOptions = {}) 
         tools.set(data.id, {
           sessionID: data.sessionID,
           messageID: data.assistantMessageID,
-          tool: toV1ToolName(data.name),
+          tool: toToolName(data.name),
           input: {},
           metadata: {},
           start: created,
@@ -556,7 +556,7 @@ export function createV2EventTranslator(options: V2EventTranslatorOptions = {}) 
         if (!call) {
           return [];
         }
-        call.input = toV1ToolInput(call.tool, data.input);
+        call.input = toToolInput(call.tool, data.input);
         call.start = created;
         const part = toolPart(data.id, {
           status: "running",
@@ -573,7 +573,7 @@ export function createV2EventTranslator(options: V2EventTranslatorOptions = {}) 
         if (!call) {
           return [];
         }
-        call.metadata = toV1ToolMetadata(call.tool, { ...call.metadata, ...data.metadata });
+        call.metadata = toToolMetadata(call.tool, { ...call.metadata, ...data.metadata });
         const part = toolPart(data.id, {
           status: "running",
           input: call.input,
@@ -589,7 +589,7 @@ export function createV2EventTranslator(options: V2EventTranslatorOptions = {}) 
         if (!call) {
           return [];
         }
-        const metadata = toV1ToolMetadata(call.tool, {
+        const metadata = toToolMetadata(call.tool, {
           ...call.metadata,
           ...(data.metadata ?? {}),
         });
@@ -637,7 +637,7 @@ export function createV2EventTranslator(options: V2EventTranslatorOptions = {}) 
           status: "error",
           input: call.input,
           error: data.error.message,
-          metadata: toV1ToolMetadata(call.tool, { ...call.metadata, ...(data.metadata ?? {}) }),
+          metadata: toToolMetadata(call.tool, { ...call.metadata, ...(data.metadata ?? {}) }),
           time: { start: call.start, end: created },
         });
         tools.delete(data.id);
@@ -654,7 +654,7 @@ export function createV2EventTranslator(options: V2EventTranslatorOptions = {}) 
         ];
 
       case "permission.asked": {
-        const request = toV1Permission(event.data);
+        const request = toPermission(event.data);
         return [{ id: event.id, type: "permission.asked", properties: request }];
       }
 
@@ -674,7 +674,7 @@ export function createV2EventTranslator(options: V2EventTranslatorOptions = {}) 
       case "form.created": {
         const form = event.data.form as FormInfo;
         options.onForm?.(form);
-        return [{ id: event.id, type: "question.asked", properties: toV1Question(form) }];
+        return [{ id: event.id, type: "question.asked", properties: toQuestion(form) }];
       }
 
       case "form.replied":
@@ -701,7 +701,7 @@ export function createV2EventTranslator(options: V2EventTranslatorOptions = {}) 
   };
 
   /** `restarted` is the connect event's mark, when the caller could tell. */
-  return (event: OpenCodeEvent, restarted?: boolean): V1GlobalEvent[] => {
+  return (event: OpenCodeEvent, restarted?: boolean): GlobalEvent[] => {
     const location = "location" in event ? event.location?.directory : undefined;
     const data = "data" in event ? (event.data as { sessionID?: unknown }) : undefined;
     const sessionID = typeof data?.sessionID === "string" ? data.sessionID : undefined;

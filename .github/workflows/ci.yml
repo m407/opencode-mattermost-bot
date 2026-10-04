@@ -44,3 +44,6 @@ jobs:
 
       - name: Test
         run: npm run test
+
+      - name: Runtime smoke test
+        run: node scripts/smoke-runtime.mjs

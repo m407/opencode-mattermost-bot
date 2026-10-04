@@ -2,7 +2,6 @@ import os from "node:os";
 import path from "node:path";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { config } from "../../../src/config.js";
 import { setRuntimeMode } from "../../../src/runtime/mode.js";
 import type { ScheduledTask } from "../../../src/app/types/scheduled-task.js";
 import {
@@ -10,7 +9,6 @@ import {
   flushSettings,
   getCompactOutputMode,
   getPromptQueueMode,
-  getResponseStreamingMode,
   getSendDiffFileAttachments,
   getPinnedDashboardEnabled,
   getShowAssistantRunFooter,
@@ -21,7 +19,6 @@ import {
   setCompactOutputMode,
   setPromptQueueMode,
   setScheduledTasks,
-  setResponseStreamingMode,
   setSendDiffFileAttachments,
   setShowAssistantRunFooter,
   setShowThinkingContent,
@@ -32,14 +29,14 @@ describe("app/stores/settings-store", () => {
 
   beforeEach(async () => {
     delete process.env.INITIAL_SETTINGS_PRESET;
-    tempHome = await mkdtemp(path.join(os.tmpdir(), "opencode-telegram-settings-store-"));
-    process.env.OPENCODE_TELEGRAM_HOME = tempHome;
+    tempHome = await mkdtemp(path.join(os.tmpdir(), "opencode-mattermost-settings-store-"));
+    process.env.OPENCODE_MATTERMOST_HOME = tempHome;
     setRuntimeMode("installed");
     __resetSettingsForTests();
   });
 
   afterEach(async () => {
-    delete process.env.OPENCODE_TELEGRAM_HOME;
+    delete process.env.OPENCODE_MATTERMOST_HOME;
     __resetSettingsForTests();
     await rm(tempHome, { recursive: true, force: true });
   });
@@ -68,7 +65,10 @@ describe("app/stores/settings-store", () => {
   });
 
   it("loads compact output mode from settings.json", async () => {
-    await writeFile(path.join(tempHome, "settings.json"), JSON.stringify({ compactOutputMode: true }));
+    await writeFile(
+      path.join(tempHome, "settings.json"),
+      JSON.stringify({ compactOutputMode: true }),
+    );
 
     await loadSettings();
 
@@ -105,86 +105,17 @@ describe("app/stores/settings-store", () => {
   });
 
   describe("prompt queue mode", () => {
-    const originalServerVersion = config.opencode.serverVersion;
-
-    afterEach(() => {
-      config.opencode.serverVersion = originalServerVersion;
-    });
-
-    it("is off by default on a V1 server", async () => {
-      config.opencode.serverVersion = "v1";
-      await loadSettings();
-
-      expect(getPromptQueueMode()).toBe("off");
-    });
-
-    it("is steer by default on a V2 server", async () => {
-      config.opencode.serverVersion = "v2";
-      await loadSettings();
-
-      expect(getPromptQueueMode()).toBe("steer");
-    });
-
-    it("reads the released promptQueueEnabled=true as the bot queue on a V1 server", async () => {
-      config.opencode.serverVersion = "v1";
-      await writeFile(
-        path.join(tempHome, "settings.json"),
-        JSON.stringify({ promptQueueEnabled: true }),
-      );
-
-      await loadSettings();
-
-      expect(getPromptQueueMode()).toBe("queue");
-    });
-
-    it.each([true, false])(
-      "starts in steer on a V2 server with promptQueueEnabled=%s and leaves settings.json as is",
-      async (oldValue) => {
-        config.opencode.serverVersion = "v2";
-        const settingsPath = path.join(tempHome, "settings.json");
-        const original = JSON.stringify({ promptQueueEnabled: oldValue });
-        await writeFile(settingsPath, original);
-
-        await loadSettings();
-        await flushSettings();
-
-        expect(getPromptQueueMode()).toBe("steer");
-        expect(await readFile(settingsPath, "utf-8")).toBe(original);
-      },
-    );
-
-    it("keeps the V1 and V2 choices apart across version switches", async () => {
-      const readSettings = async () =>
-        JSON.parse(await readFile(path.join(tempHome, "settings.json"), "utf-8"));
-
-      config.opencode.serverVersion = "v1";
-      await loadSettings();
-      setPromptQueueMode("queue");
-      await flushSettings();
-
-      config.opencode.serverVersion = "v2";
+    it("uses steering by default", async () => {
       await loadSettings();
       expect(getPromptQueueMode()).toBe("steer");
-      setPromptQueueMode("off");
-      await flushSettings();
-      expect(await readSettings()).toMatchObject({
-        promptQueueEnabled: true,
-        promptQueueMode: "off",
-      });
-
-      config.opencode.serverVersion = "v1";
+    });
+    it.each(["off", "queue", "steer"] as const)("persists %s mode", async (mode) => {
       await loadSettings();
-      expect(getPromptQueueMode()).toBe("queue");
-      setPromptQueueMode("off");
+      setPromptQueueMode(mode);
       await flushSettings();
-
-      config.opencode.serverVersion = "v2";
+      __resetSettingsForTests();
       await loadSettings();
-      expect(getPromptQueueMode()).toBe("off");
-      expect(await readSettings()).toMatchObject({
-        promptQueueEnabled: false,
-        promptQueueMode: "off",
-      });
+      expect(getPromptQueueMode()).toBe(mode);
     });
   });
 
@@ -192,7 +123,7 @@ describe("app/stores/settings-store", () => {
     vi.resetModules();
     vi.stubEnv(
       "INITIAL_SETTINGS_PRESET",
-      '{"showAssistantRunFooter":false,"compactOutputMode":true,"deleteCompactProgressOnFinish":true,"ttsMode":"auto","responseStreamingMode":"draft","sendDiffFileAttachments":false,"showThinkingContent":false,"promptQueueEnabled":true,"pinnedDashboardEnabled":false}',
+      '{"showAssistantRunFooter":false,"compactOutputMode":true,"deleteCompactProgressOnFinish":true,"ttsMode":"auto","sendDiffFileAttachments":false,"showThinkingContent":false,"promptQueueMode":"queue","pinnedDashboardEnabled":false}',
     );
 
     const store = await import("../../../src/app/stores/settings-store.js");
@@ -202,7 +133,6 @@ describe("app/stores/settings-store", () => {
     expect(store.getCompactOutputMode()).toBe(true);
     expect(store.getDeleteCompactProgressOnFinish()).toBe(true);
     expect(store.getTtsMode()).toBe("auto");
-    expect(store.getResponseStreamingMode()).toBe("draft");
     expect(store.getSendDiffFileAttachments()).toBe(false);
     expect(store.getShowThinkingContent()).toBe(false);
     expect(store.getPromptQueueMode()).toBe("queue");
@@ -219,7 +149,7 @@ describe("app/stores/settings-store", () => {
     );
     vi.resetModules();
     vi.stubEnv("INITIAL_SETTINGS_PRESET", '{"showAssistantRunFooter":false}');
-    vi.stubEnv("OPENCODE_TELEGRAM_HOME", tempHome);
+    vi.stubEnv("OPENCODE_MATTERMOST_HOME", tempHome);
 
     const store = await import("../../../src/app/stores/settings-store.js");
     await store.loadSettings();
@@ -234,10 +164,12 @@ describe("app/stores/settings-store", () => {
     vi.resetModules();
     vi.stubEnv("INITIAL_SETTINGS_PRESET", '{"unknownKey":true,"compactOutputMode":true}');
 
-    await expect((async () => {
-      const store = await import("../../../src/app/stores/settings-store.js");
-      await store.loadSettings();
-    })()).rejects.toThrow(/unknown key "unknownKey"/);
+    await expect(
+      (async () => {
+        const store = await import("../../../src/app/stores/settings-store.js");
+        await store.loadSettings();
+      })(),
+    ).rejects.toThrow(/unknown key "unknownKey"/);
 
     vi.unstubAllEnvs();
     vi.resetModules();
@@ -247,17 +179,22 @@ describe("app/stores/settings-store", () => {
     vi.resetModules();
     vi.stubEnv("INITIAL_SETTINGS_PRESET", '{"compactOutputMode":"yes"}');
 
-    await expect((async () => {
-      const store = await import("../../../src/app/stores/settings-store.js");
-      await store.loadSettings();
-    })()).rejects.toThrow(/"compactOutputMode" must be a boolean/);
+    await expect(
+      (async () => {
+        const store = await import("../../../src/app/stores/settings-store.js");
+        await store.loadSettings();
+      })(),
+    ).rejects.toThrow(/"compactOutputMode" must be a boolean/);
 
     vi.unstubAllEnvs();
     vi.resetModules();
   });
 
   it("loads thinking content setting from settings.json", async () => {
-    await writeFile(path.join(tempHome, "settings.json"), JSON.stringify({ showThinkingContent: false }));
+    await writeFile(
+      path.join(tempHome, "settings.json"),
+      JSON.stringify({ showThinkingContent: false }),
+    );
 
     await loadSettings();
 
@@ -268,20 +205,6 @@ describe("app/stores/settings-store", () => {
     await loadSettings();
 
     expect(getSendDiffFileAttachments()).toBe(true);
-  });
-
-  it("uses edit response streaming mode by default", async () => {
-    await loadSettings();
-
-    expect(getResponseStreamingMode()).toBe("edit");
-  });
-
-  it("loads response streaming mode from settings.json", async () => {
-    await writeFile(path.join(tempHome, "settings.json"), JSON.stringify({ responseStreamingMode: "draft" }));
-
-    await loadSettings();
-
-    expect(getResponseStreamingMode()).toBe("draft");
   });
 
   it("loads diff file attachment setting from settings.json", async () => {
@@ -350,12 +273,12 @@ describe("app/stores/settings-store", () => {
     });
   });
 
-  it("does not let INITIAL_SETTINGS_PRESET override a stored promptQueueEnabled", async () => {
+  it("does not let INITIAL_SETTINGS_PRESET override a stored promptQueueMode", async () => {
     vi.resetModules();
-    vi.stubEnv("INITIAL_SETTINGS_PRESET", '{"promptQueueEnabled":false}');
+    vi.stubEnv("INITIAL_SETTINGS_PRESET", '{"promptQueueMode":"off"}');
     await writeFile(
       path.join(tempHome, "settings.json"),
-      JSON.stringify({ promptQueueEnabled: true }),
+      JSON.stringify({ promptQueueMode: "queue" }),
     );
 
     const store = await import("../../../src/app/stores/settings-store.js");
@@ -367,15 +290,14 @@ describe("app/stores/settings-store", () => {
     vi.resetModules();
   });
 
-  it("seeds only the V1 queue from INITIAL_SETTINGS_PRESET promptQueueEnabled", async () => {
+  it("seeds the queue mode from INITIAL_SETTINGS_PRESET", async () => {
     vi.resetModules();
-    vi.stubEnv("INITIAL_SETTINGS_PRESET", '{"promptQueueEnabled":true}');
-    vi.stubEnv("OPENCODE_SERVER_VERSION", "v2");
+    vi.stubEnv("INITIAL_SETTINGS_PRESET", '{"promptQueueMode":"queue"}');
 
     const store = await import("../../../src/app/stores/settings-store.js");
     await store.loadSettings();
 
-    expect(store.getPromptQueueMode()).toBe("steer");
+    expect(store.getPromptQueueMode()).toBe("queue");
 
     vi.unstubAllEnvs();
     vi.resetModules();
@@ -569,18 +491,6 @@ describe("app/stores/settings-store", () => {
       await loadSettings();
 
       expect(getScheduledTasks().map((task) => task.id)).toEqual(["task-1"]);
-    });
-  });
-
-  it("persists response streaming mode to settings.json", async () => {
-    await loadSettings();
-
-    setResponseStreamingMode("draft");
-
-    expect(getResponseStreamingMode()).toBe("draft");
-    await vi.waitFor(async () => {
-      const settings = JSON.parse(await readFile(path.join(tempHome, "settings.json"), "utf-8"));
-      expect(settings.responseStreamingMode).toBe("draft");
     });
   });
 });

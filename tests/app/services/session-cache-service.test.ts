@@ -15,7 +15,6 @@ import {
 const {
   sessionListMock,
   pathAccessMock,
-  serverVersion,
   loggerWarnMock,
   loggerDebugMock,
   loggerInfoMock,
@@ -23,7 +22,6 @@ const {
 } = vi.hoisted(() => ({
   sessionListMock: vi.fn(),
   pathAccessMock: vi.fn(),
-  serverVersion: { value: "v1" as "v1" | "v2" },
   loggerWarnMock: vi.fn(),
   loggerDebugMock: vi.fn(),
   loggerInfoMock: vi.fn(),
@@ -39,9 +37,6 @@ vi.mock("../../../src/opencode/client.js", () => ({
       pathAccessMock();
       return undefined;
     },
-  },
-  get opencodeServerVersion() {
-    return serverVersion.value;
   },
 }));
 
@@ -73,19 +68,18 @@ describe("session-cache-service", () => {
   let tempHome: string;
 
   beforeEach(async () => {
-    tempHome = await mkdtemp(path.join(os.tmpdir(), "opencode-telegram-cache-"));
-    process.env.OPENCODE_TELEGRAM_HOME = tempHome;
+    tempHome = await mkdtemp(path.join(os.tmpdir(), "opencode-mattermost-cache-"));
+    process.env.OPENCODE_MATTERMOST_HOME = tempHome;
     setRuntimeMode("installed");
     await loadSettings();
     sessionListMock.mockReset();
     pathAccessMock.mockReset();
-    serverVersion.value = "v1";
     loggerWarnMock.mockReset();
     __resetSessionDirectoryCacheForTests();
   });
 
   afterEach(async () => {
-    delete process.env.OPENCODE_TELEGRAM_HOME;
+    delete process.env.OPENCODE_MATTERMOST_HOME;
     await rm(tempHome, { recursive: true, force: true });
   });
 
@@ -128,7 +122,6 @@ describe("session-cache-service", () => {
   });
 
   it("builds the cache from the API alone on a V2 server", async () => {
-    serverVersion.value = "v2";
     sessionListMock.mockResolvedValueOnce({
       data: [createSession("D:/repo-v2", 1_700_000_000_300)],
       error: null,

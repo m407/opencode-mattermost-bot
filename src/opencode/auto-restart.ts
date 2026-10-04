@@ -1,7 +1,7 @@
 import { config } from "../config.js";
 import { isContainerRuntime } from "../runtime/container.js";
 import { logger } from "../utils/logger.js";
-import { opencodeClient, opencodeServerVersion } from "./client.js";
+import { opencodeClient } from "./client.js";
 import { canStartLocalOpencodeServer } from "./local-start.js";
 import type { OpencodeReadyLifecycle } from "./ready-lifecycle.js";
 import { explainFailedHealthCheck } from "./server-health.js";
@@ -165,7 +165,7 @@ export class OpencodeAutoRestartService {
         `[OpenCodeAutoRestart] OpenCode server is unavailable, starting local server: reason=${reason}, port=${this.localTarget.port}`,
       );
 
-      const childProcess = startLocalOpencodeServer(this.localTarget, opencodeServerVersion);
+      const childProcess = startLocalOpencodeServer(this.localTarget);
       childProcess.once("error", (error) => {
         logger.error("[OpenCodeAutoRestart] OpenCode server process failed to start", error);
       });

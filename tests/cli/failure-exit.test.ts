@@ -24,8 +24,12 @@ describe("cli/failure-exit", () => {
   beforeEach(() => {
     mocked.flushLoggerMock.mockReset();
     mocked.flushLoggerMock.mockResolvedValue(undefined);
-    processExitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as unknown as typeof process.exit);
-    stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation((() => true) as unknown as typeof process.stderr.write);
+    processExitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as unknown as typeof process.exit);
+    stderrSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((() => true) as unknown as typeof process.stderr.write);
   });
 
   afterEach(() => {
@@ -38,7 +42,9 @@ describe("cli/failure-exit", () => {
 
     await handleCliFailure(error);
 
-    expect(stderrSpy).toHaveBeenCalledWith("CLI error: Network request for 'getWebhookInfo' failed!\n");
+    expect(stderrSpy).toHaveBeenCalledWith(
+      "CLI error: Network request for 'getWebhookInfo' failed!\n",
+    );
     expect(mocked.flushLoggerMock).toHaveBeenCalledTimes(1);
     expect(processExitSpy).toHaveBeenCalledWith(1);
     expect(defined(processExitSpy.mock.invocationCallOrder[0])).toBeGreaterThan(

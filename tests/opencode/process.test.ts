@@ -8,7 +8,7 @@ import {
   createOpencodeServeSpawnCommand,
   findUnixListeningPidInSs,
   findWindowsListeningPidInNetstat,
-  getOpencodeApiVersion,
+  isSupportedOpencodeVersion,
   parseOpencodeVersionOutput,
   readNpmShimTarget,
 } from "../../src/opencode/process.js";
@@ -46,7 +46,7 @@ describe("opencode/process", () => {
   });
 
   it("builds opencode serve command with the configured local port", () => {
-    const command = createOpencodeServeSpawnCommand({ host: "localhost", port: 4987 }, "v1");
+    const command = createOpencodeServeSpawnCommand({ host: "localhost", port: 4987 });
 
     if (process.platform === "win32") {
       expect(command.windowsHide).toBe(true);
@@ -55,18 +55,18 @@ describe("opencode/process", () => {
       // Otherwise, spawn() will likely fail with ENOENT on default npm installs where
       // only opencode.cmd is on PATH.
       if (command.command.toLowerCase() === "cmd.exe") {
-        expect(command.args).toEqual(["/c", "opencode", "serve", "--port", "4987"]);
+        expect(command.args).toEqual(["/c", "opencode", "serve", "--service", "--port", "4987"]);
       } else {
         expect(path.isAbsolute(command.command)).toBe(true);
         expect(command.command.toLowerCase().endsWith("\\opencode.exe")).toBe(true);
-        expect(command.args).toEqual(["serve", "--port", "4987"]);
+        expect(command.args).toEqual(["serve", "--service", "--port", "4987"]);
       }
       return;
     }
 
     expect(command).toEqual({
       command: "opencode",
-      args: ["serve", "--port", "4987"],
+      args: ["serve", "--service", "--port", "4987"],
       windowsHide: false,
     });
   });
@@ -81,10 +81,10 @@ describe("opencode/process", () => {
     try {
       process.env.PATH = "";
 
-      const command = createOpencodeServeSpawnCommand({ host: "localhost", port: 4987 }, "v1");
+      const command = createOpencodeServeSpawnCommand({ host: "localhost", port: 4987 });
       expect(command).toEqual({
         command: "cmd.exe",
-        args: ["/c", "opencode", "serve", "--port", "4987"],
+        args: ["/c", "opencode", "serve", "--service", "--port", "4987"],
         windowsHide: true,
       });
     } finally {
@@ -98,7 +98,7 @@ describe("opencode/process", () => {
     }
 
     const originalPath = process.env.PATH;
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-telegram-bot-"));
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-mattermost-bot-"));
     const binDir = path.join(tempRoot, "bin");
     const exePath = path.join(binDir, "opencode.exe");
 
@@ -109,40 +109,10 @@ describe("opencode/process", () => {
       // Isolate PATH to only the temp dir — no npm .cmd shim on PATH
       process.env.PATH = binDir;
 
-      const command = createOpencodeServeSpawnCommand({ host: "localhost", port: 4987 }, "v1");
+      const command = createOpencodeServeSpawnCommand({ host: "localhost", port: 4987 });
       expect(command).toEqual({
         command: exePath,
-        args: ["serve", "--port", "4987"],
-        windowsHide: true,
-      });
-    } finally {
-      process.env.PATH = originalPath;
-      fs.rmSync(tempRoot, { recursive: true, force: true });
-    }
-  });
-
-  it("uses resolved opencode.exe on Windows when opencode.cmd is on PATH and exe exists", () => {
-    if (process.platform !== "win32") {
-      return;
-    }
-
-    const originalPath = process.env.PATH;
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-telegram-bot-"));
-    const binDir = path.join(tempRoot, "bin");
-    const exePath = path.join(binDir, "node_modules", "opencode-ai", "bin", "opencode.exe");
-    const cmdPath = path.join(binDir, "opencode.cmd");
-
-    try {
-      fs.mkdirSync(path.dirname(exePath), { recursive: true });
-      fs.writeFileSync(exePath, "", "utf8");
-      fs.writeFileSync(cmdPath, "@echo off\r\nexit /b 0\r\n", "utf8");
-
-      process.env.PATH = [binDir, originalPath].filter(Boolean).join(path.delimiter);
-
-      const command = createOpencodeServeSpawnCommand({ host: "localhost", port: 4987 }, "v1");
-      expect(command).toEqual({
-        command: exePath,
-        args: ["serve", "--port", "4987"],
+        args: ["serve", "--service", "--port", "4987"],
         windowsHide: true,
       });
     } finally {
@@ -152,13 +122,13 @@ describe("opencode/process", () => {
   });
 
   it("starts the registered background server for OpenCode V2", () => {
-    const command = createOpencodeServeSpawnCommand({ host: "127.0.0.1", port: 4097 }, "v2");
+    const command = createOpencodeServeSpawnCommand({ host: "127.0.0.1", port: 4097 });
 
     expect(command.args.slice(-4)).toEqual(["serve", "--service", "--port", "4097"]);
   });
 
   it("reads the exe an npm shim runs", () => {
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-telegram-bot-"));
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-mattermost-bot-"));
     const cmdPath = path.join(tempRoot, "opencode.cmd");
 
     try {
@@ -179,7 +149,7 @@ describe("opencode/process", () => {
     }
 
     const originalPath = process.env.PATH;
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-telegram-bot-"));
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-mattermost-bot-"));
     const binDir = path.join(tempRoot, "bin");
     const v1Exe = path.join(binDir, "node_modules", "opencode-ai", "bin", "opencode.exe");
     const v2Exe = path.join(binDir, "node_modules", "@opencode", "cli", "bin", "opencode.exe");
@@ -192,7 +162,7 @@ describe("opencode/process", () => {
       fs.writeFileSync(path.join(binDir, "opencode.cmd"), V2_NPM_SHIM, "utf8");
       process.env.PATH = binDir;
 
-      const command = createOpencodeServeSpawnCommand({ host: "localhost", port: 4987 }, "v2");
+      const command = createOpencodeServeSpawnCommand({ host: "localhost", port: 4987 });
       expect(command.command).toBe(v2Exe);
     } finally {
       process.env.PATH = originalPath;
@@ -206,9 +176,9 @@ describe("opencode/process", () => {
     expect(parseOpencodeVersionOutput("command not found")).toBeNull();
   });
 
-  it("maps OpenCode releases to their API version", () => {
-    expect(getOpencodeApiVersion("2.0.16")).toBe("v2");
-    expect(getOpencodeApiVersion("1.18.32")).toBe("v1");
-    expect(getOpencodeApiVersion("0.15.0")).toBe("v1");
+  it("accepts only OpenCode 2.x for local startup", () => {
+    expect(isSupportedOpencodeVersion("2.0.16")).toBe(true);
+    expect(isSupportedOpencodeVersion("1.18.32")).toBe(false);
+    expect(isSupportedOpencodeVersion("0.15.0")).toBe(false);
   });
 });

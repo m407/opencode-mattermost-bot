@@ -283,7 +283,9 @@ function isSamePath(leftPath: string, rightPath: string): boolean {
 export function isPathWithinDirectory(targetPath: string, directoryPath: string): boolean {
   const pathApi = getPathApi(directoryPath);
   const relativePath = pathApi.relative(directoryPath, targetPath);
-  return relativePath === "" || (!relativePath.startsWith("..") && !pathApi.isAbsolute(relativePath));
+  return (
+    relativePath === "" || (!relativePath.startsWith("..") && !pathApi.isAbsolute(relativePath))
+  );
 }
 
 export function getProjectRoot(): string | null {

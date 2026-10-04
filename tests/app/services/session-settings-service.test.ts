@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Session } from "@opencode-ai/sdk/v2";
+import type { Session } from "../../../src/opencode/types.js";
 
 const selectAgent = vi.hoisted(() => vi.fn());
 const selectModel = vi.hoisted(() => vi.fn());
@@ -78,9 +78,7 @@ describe("app/services/session-settings-service", () => {
       makeSession({ model: { providerID: "opencode-go", id: "deepseek-v4-flash" } }),
     );
 
-    expect(selectModel).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "default" }),
-    );
+    expect(selectModel).toHaveBeenCalledWith(expect.objectContaining({ variant: "default" }));
   });
 
   it("leaves the current settings untouched for a session that was never prompted", async () => {

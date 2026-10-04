@@ -4,16 +4,12 @@ const mocked = vi.hoisted(() => ({
   probeMock: vi.fn(),
   findRegisteredMock: vi.fn(),
   readLocalVersionMock: vi.fn(),
-  serverVersion: "v2" as "v1" | "v2",
   loggerWarnMock: vi.fn(),
   loggerErrorMock: vi.fn(),
 }));
 
 vi.mock("../../src/opencode/client.js", () => ({
   opencodeClient: { global: { health: vi.fn() } },
-  get opencodeServerVersion() {
-    return mocked.serverVersion;
-  },
   probeOpencodeServer: mocked.probeMock,
   findRegisteredOpencodeServerUrl: mocked.findRegisteredMock,
 }));
@@ -50,7 +46,6 @@ function errorMessage(): string {
 describe("opencode/local-start", () => {
   beforeEach(() => {
     __resetServerHealthStateForTests();
-    mocked.serverVersion = "v2";
     mocked.probeMock.mockReset();
     mocked.probeMock.mockResolvedValue({ kind: "none" });
     mocked.findRegisteredMock.mockReset();
@@ -68,9 +63,7 @@ describe("opencode/local-start", () => {
   });
 
   it("refuses when the configured address rejects the credentials", async () => {
-    mocked.probeMock.mockImplementation(async (version: string) =>
-      version === "v2" ? { kind: "unauthorized" } : { kind: "none" },
-    );
+    mocked.probeMock.mockResolvedValue({ kind: "unauthorized" });
 
     await expect(canStartLocalOpencodeServer(TARGET, "always")).resolves.toBe(false);
     expect(mocked.loggerWarnMock).toHaveBeenCalledWith(
@@ -81,15 +74,10 @@ describe("opencode/local-start", () => {
   });
 
   it("refuses when a server of the other version answers at the configured address", async () => {
-    mocked.probeMock.mockImplementation(async (version: string) =>
-      version === "v1"
-        ? { kind: "found", version: "v1", serverVersion: "1.18.32" }
-        : { kind: "none" },
-    );
+    mocked.probeMock.mockResolvedValue({ kind: "unsupported" });
 
     await expect(canStartLocalOpencodeServer(TARGET, "always")).resolves.toBe(false);
-    expect(errorMessage()).toContain("OPENCODE_SERVER_VERSION=v2");
-    expect(errorMessage()).toContain("OpenCode 1.18.32 (API v1)");
+    expect(errorMessage()).toContain("supported OpenCode V2 API");
   });
 
   it("refuses on V2 while a registered V2 server runs on another port", async () => {
@@ -101,15 +89,6 @@ describe("opencode/local-start", () => {
     expect(mocked.readLocalVersionMock).not.toHaveBeenCalled();
   });
 
-  it("does not look for a registered server on V1", async () => {
-    mocked.serverVersion = "v1";
-    mocked.readLocalVersionMock.mockResolvedValue("1.18.32");
-    mocked.findRegisteredMock.mockResolvedValue("http://127.0.0.1:49374");
-
-    await expect(canStartLocalOpencodeServer(TARGET, "always")).resolves.toBe(true);
-    expect(mocked.findRegisteredMock).not.toHaveBeenCalled();
-  });
-
   it("allows a start when the registered V2 server is on the configured port", async () => {
     mocked.findRegisteredMock.mockResolvedValue("http://localhost:4097");
 
@@ -117,13 +96,12 @@ describe("opencode/local-start", () => {
   });
 
   it("refuses when the local opencode executable is the other version", async () => {
-    mocked.serverVersion = "v1";
-    mocked.readLocalVersionMock.mockResolvedValue("2.0.16");
+    mocked.readLocalVersionMock.mockResolvedValue("1.18.32");
 
     await expect(canStartLocalOpencodeServer(TARGET, "always")).resolves.toBe(false);
-    expect(errorMessage()).toContain("OPENCODE_SERVER_VERSION=v1");
-    expect(errorMessage()).toContain("local opencode executable is OpenCode 2.0.16 (API v2)");
-    expect(errorMessage()).toContain("Set OPENCODE_SERVER_VERSION=v2");
+    expect(errorMessage()).toContain("only OpenCode 2.x is supported");
+    expect(errorMessage()).toContain("Local executable is OpenCode 1.18.32");
+    expect(errorMessage()).toContain("Install @opencode/cli");
   });
 
   it("allows a start when the executable version cannot be read", async () => {
@@ -133,8 +111,7 @@ describe("opencode/local-start", () => {
   });
 
   it("logs a repeated refusal once in once mode and every time in always mode", async () => {
-    mocked.serverVersion = "v1";
-    mocked.readLocalVersionMock.mockResolvedValue("2.0.16");
+    mocked.readLocalVersionMock.mockResolvedValue("1.18.32");
 
     await canStartLocalOpencodeServer(TARGET, "once");
     await canStartLocalOpencodeServer(TARGET, "once");

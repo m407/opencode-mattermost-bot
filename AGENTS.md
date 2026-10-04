@@ -4,14 +4,14 @@ Instructions for AI agents working on this project.
 
 ## About the project
 
-**opencode-telegram-bot** is a Telegram bot that acts as a mobile client for OpenCode.
-It lets a user run and monitor coding tasks on a local machine through Telegram.
+**opencode-mattermost-bot** is a Mattermost bot that acts as a mobile client for OpenCode.
+It lets a user run and monitor coding tasks on a local machine through Mattermost.
 
 Functional requirements, features, and development status are in [PRODUCT.md](./PRODUCT.md).
 
 ## Technology stack
 
-- **Language:** TypeScript 5.x
+- **Language:** TypeScript 7.0.2 (build and type checking)
 - **Runtime:** Node.js 22.14+
 - **Package manager:** npm
 - **Configuration:** environment variables (`.env`)
@@ -19,9 +19,9 @@ Functional requirements, features, and development status are in [PRODUCT.md](./
 
 ### Core dependencies
 
-- `grammy` - Telegram Bot API framework (https://grammy.dev/)
-- `@grammyjs/menu` - inline keyboards and menus
-- `@opencode-ai/sdk` - official OpenCode Server SDK
+- `ws` - Mattermost WebSocket events
+- Native fetch - Mattermost REST API v4
+- `@opencode/client` - OpenCode V2 client
 - `dotenv` - environment variable loading
 
 ### Test dependencies
@@ -31,17 +31,23 @@ Functional requirements, features, and development status are in [PRODUCT.md](./
 
 ### Code quality
 
-- ESLint + Prettier
+- Oxlint + Prettier
 - TypeScript strict mode
+
+Build and type-check with `npm run build` and `npm run typecheck`, using TypeScript
+7.0.2. Run `npm run lint` for Oxlint checks with a zero-warnings policy.
+Oxlint parses TypeScript independently and does not require a legacy Compiler API.
+The rules in `.oxlintrc.json` retain the project's checks, including the ban on
+console calls outside `src/utils/logger.ts`. Prettier handles formatting.
 
 ## Architecture
 
 ### Main components
 
-1. **Bot Layer** - grammY setup, middleware, commands, callback handlers
+1. **Bot Layer** - Mattermost REST/WebSocket, commands, authenticated action callbacks
 2. **OpenCode Client Layer** - SDK wrapper and SSE event subscription
 3. **State Managers** - session/project/settings/question/permission/model/agent/variant/keyboard/pinned
-4. **Summary Pipeline** - event aggregation and Telegram-friendly formatting
+4. **Summary Pipeline** - event aggregation and Mattermost-friendly formatting
 5. **Process Manager** - local OpenCode server process start, stop, and status
 6. **Runtime/CLI Layer** - runtime mode, config bootstrap, CLI commands
 7. **I18n Layer** - localized bot and CLI strings to multiple languages
@@ -49,8 +55,8 @@ Functional requirements, features, and development status are in [PRODUCT.md](./
 ### Data flow
 
 ```text
-Telegram User
-  -> Telegram Bot (grammY)
+Mattermost User
+  -> Mattermost Bot (API v4)
   -> Managers + OpenCodeClient
   -> OpenCode Server
 
@@ -58,8 +64,8 @@ OpenCode Server
   -> SSE Events
   -> Event Listener
   -> Summary Aggregator / Tool Managers
-  -> Telegram Bot
-  -> Telegram User
+  -> Mattermost Bot
+  -> Mattermost User
 ```
 
 ### State management
@@ -81,6 +87,7 @@ OpenCode Server
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
 
 Before implementing:
+
 - State your assumptions explicitly. If uncertain, ask.
 - If multiple interpretations exist, present them - don't pick silently.
 - If a simpler approach exists, say so. Push back when warranted.
@@ -103,12 +110,14 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 **Touch only what you must. Clean up only your own mess.**
 
 When editing existing code:
+
 - Don't "improve" adjacent code, comments, or formatting.
 - Don't refactor things that aren't broken.
 - Match existing style, even if you'd do it differently.
 - If you notice unrelated dead code, mention it - don't delete it.
 
 When your changes create orphans:
+
 - Remove imports/variables/functions that YOUR changes made unused.
 - Don't remove pre-existing dead code unless asked.
 
@@ -119,11 +128,13 @@ The test: Every changed line should trace directly to the user's request.
 **Define success criteria. Loop until verified.**
 
 Transform tasks into verifiable goals:
+
 - "Add validation" → "Write tests for invalid inputs, then make them pass"
 - "Fix the bug" → "Write a test that reproduces it, then make it pass"
 - "Refactor X" → "Ensure tests pass before and after"
 
 For multi-step tasks, state a brief plan:
+
 ```
 1. [Step] → verify: [check]
 2. [Step] → verify: [check]
@@ -146,12 +157,12 @@ If your shell runs on Windows:
 ### Language
 
 - Code, identifiers, comments, and in-code documentation must be in English.
-- User-facing Telegram messages should be localized through i18n.
+- User-facing Mattermost messages should be localized through i18n.
 
 ### Code style
 
 - Use TypeScript strict mode.
-- Use ESLint + Prettier.
+- Use Oxlint + Prettier.
 - Prefer `const` over `let`.
 - Use clear names and avoid unnecessary abbreviations.
 - Keep functions small and focused.
@@ -192,7 +203,7 @@ const COMMAND_DEFINITIONS: BotCommandI18nDefinition[] = [
 Important:
 
 - When adding a command, update `definitions.ts` only.
-- The same source is used for Telegram `setMyCommands` and help/docs.
+- The same source is used for Mattermost `setMyCommands` and help/docs.
 - Do not duplicate command lists elsewhere.
 
 ### Logging
@@ -248,33 +259,25 @@ Important:
 
 ## OpenCode SDK quick reference
 
-The example below is the V1 client. OpenCode V2 goes through `@opencode/client`, wrapped in `src/opencode/v2/`.
+The bot supports OpenCode V2 only. `src/opencode/v2/` wraps `@opencode/client`; `src/opencode/types.ts` defines bot domain values. Use the inferred client type so unsupported methods fail type checking.
 
 ```typescript
-import { createOpencodeClient } from "@opencode-ai/sdk";
+import { opencodeClient } from "./opencode/client.js";
 
-const client = createOpencodeClient({ baseUrl: "http://localhost:4096" });
-
-await client.global.health();
-
-await client.project.list();
-await client.project.current();
-
-await client.session.list();
-await client.session.create({ body: { title: "My session" } });
-await client.session.prompt({
-  path: { id: "session-id" },
-  body: { parts: [{ type: "text", text: "Implement feature X" }] },
+await opencodeClient.global.health();
+await opencodeClient.project.list();
+await opencodeClient.session.create({ directory: "/project", title: "My session" });
+await opencodeClient.session.promptAsync({
+  sessionID: "session-id",
+  parts: [{ type: "text", text: "Implement feature X" }],
 });
-await client.session.abort({ path: { id: "session-id" } });
+await opencodeClient.session.abort({ sessionID: "session-id" });
 
-const events = await client.event.subscribe();
+const events = await opencodeClient.global.event();
 for await (const event of events.stream) {
-  // handle SSE event
+  // handle normalized global SSE event
 }
 ```
-
-Full docs: https://opencode.ai/docs/sdk
 
 ## Workflow
 

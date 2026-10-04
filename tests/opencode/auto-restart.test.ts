@@ -32,7 +32,6 @@ vi.mock("../../src/opencode/client.js", () => ({
       health: mocked.healthMock,
     },
   },
-  opencodeServerVersion: "v1",
 }));
 
 vi.mock("../../src/opencode/local-start.js", () => ({
@@ -141,7 +140,7 @@ describe("opencode/auto-restart", () => {
 
   it("does not spawn a local process in a container when health-check fails", async () => {
     mocked.config.opencode.autoRestartEnabled = true;
-    vi.stubEnv("OPENCODE_TELEGRAM_CONTAINER", "1");
+    vi.stubEnv("OPENCODE_MATTERMOST_CONTAINER", "1");
     mocked.healthMock.mockRejectedValue(new Error("offline"));
     const service = new OpencodeAutoRestartService(readyLifecycle);
 
@@ -159,7 +158,7 @@ describe("opencode/auto-restart", () => {
 
   it("still notifies ready in a container when the host server is healthy", async () => {
     mocked.config.opencode.autoRestartEnabled = true;
-    vi.stubEnv("OPENCODE_TELEGRAM_CONTAINER", "1");
+    vi.stubEnv("OPENCODE_MATTERMOST_CONTAINER", "1");
     mocked.healthMock.mockResolvedValue(healthyResponse());
     const service = new OpencodeAutoRestartService(readyLifecycle);
 
@@ -197,13 +196,10 @@ describe("opencode/auto-restart", () => {
     await service.start();
 
     expect(mocked.startLocalOpencodeServerMock).toHaveBeenCalledTimes(1);
-    expect(mocked.startLocalOpencodeServerMock).toHaveBeenCalledWith(
-      {
-        host: "localhost",
-        port: 4096,
-      },
-      "v1",
-    );
+    expect(mocked.startLocalOpencodeServerMock).toHaveBeenCalledWith({
+      host: "localhost",
+      port: 4096,
+    });
     expect(childProcess.unref).toHaveBeenCalledTimes(1);
     expect(mocked.notifyUnavailableMock).toHaveBeenCalledWith("auto_restart_startup");
     expect(mocked.notifyReadyMock).toHaveBeenCalledWith("auto_restart_startup");

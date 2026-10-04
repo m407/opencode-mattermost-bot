@@ -3,13 +3,6 @@ FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
-# Install only native build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copy package files first for better layer caching
 COPY package.json package-lock.json ./
 
@@ -42,7 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV NODE_ENV=production
 
 # Set persistent home for the bot
-ENV OPENCODE_TELEGRAM_HOME=/app/data
+ENV OPENCODE_MATTERMOST_HOME=/app/data
 
 # Create data directories with correct ownership for node user
 RUN mkdir -p /app/data/logs /app/data/run && \

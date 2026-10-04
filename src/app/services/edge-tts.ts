@@ -82,10 +82,7 @@ function jsDateString(date: Date = new Date()): string {
 }
 
 function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /** Escapes a value for interpolation into a single-quoted XML attribute. */

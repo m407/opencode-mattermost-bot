@@ -784,9 +784,7 @@ export async function searchModels(query: string): Promise<FavoriteModel[]> {
     })
     .slice(0, SEARCH_RESULTS_LIMIT);
 
-  logger.debug(
-    `[ModelManager] Model search: query="${query}", results=${results.length}`,
-  );
+  logger.debug(`[ModelManager] Model search: query="${query}", results=${results.length}`);
 
   return results;
 }

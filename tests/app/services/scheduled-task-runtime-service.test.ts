@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Bot, Context } from "grammy";
 import type { ScheduledTask } from "../../../src/app/types/scheduled-task.js";
 import { defined } from "../../helpers/defined.js";
 
@@ -21,9 +20,7 @@ function cloneTask(task: ScheduledTask): ScheduledTask {
 
 vi.mock("../../../src/config.js", () => ({
   config: {
-    telegram: {
-      allowedUserId: 777,
-    },
+    mattermost: {},
     bot: {
       messageFormatMode: "markdown",
     },
@@ -54,10 +51,6 @@ vi.mock("../../../src/app/services/scheduled-task-executor-service.js", () => ({
 
 vi.mock("../../../src/app/services/scheduled-task-session-ignore-service.js", () => ({
   cleanupScheduledTaskSessionIgnores: mocked.cleanupIgnoresMock,
-}));
-
-vi.mock("../../../src/bot/messages/telegram-text.js", () => ({
-  sendBotText: mocked.sendBotTextMock,
 }));
 
 vi.mock("../../../src/app/stores/scheduled-task-store.js", () => ({
@@ -148,11 +141,7 @@ function createTask(partial: Partial<ScheduledTask> = {}): ScheduledTask {
 }
 
 async function createDeliverySender() {
-  const { createScheduledTaskDeliverySender } = await import(
-    "../../../src/bot/messages/scheduled-task-delivery.js"
-  );
-
-  return createScheduledTaskDeliverySender({ sendMessage: vi.fn() } as never, 777);
+  return { send: mocked.sendBotTextMock.mockResolvedValue(true) };
 }
 
 describe("app/services/scheduled-task-runtime-service", () => {
@@ -191,7 +180,7 @@ describe("app/services/scheduled-task-runtime-service", () => {
     vi.setSystemTime(new Date("2026-03-16T10:00:00.000Z"));
     foregroundSessionState.markBusy("session-1", "D:\\Projects\\Repo");
 
-    await runtime.initialize({ api: {} } as Bot<Context>, await createDeliverySender());
+    await runtime.initialize(await createDeliverySender());
 
     expect(mocked.cleanupIgnoresMock).toHaveBeenCalledTimes(1);
     await vi.runAllTimersAsync();
@@ -202,25 +191,13 @@ describe("app/services/scheduled-task-runtime-service", () => {
     foregroundSessionState.markIdle("session-1");
     await runtime.flushDeferredDeliveries();
 
-    expect(mocked.sendBotTextMock).toHaveBeenCalledTimes(2);
-    expect(mocked.sendBotTextMock).toHaveBeenNthCalledWith(
-      1,
+    expect(mocked.sendBotTextMock).toHaveBeenCalledTimes(1);
+    expect(mocked.sendBotTextMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        chatId: 777,
-        format: "markdown_v2",
-        options: { disable_notification: true },
-        text: expect.stringMatching(/Send report[\s\S]*All good/),
+        resultText: "All good",
+        footerText: "🛠️ Build · 🧠 openai/gpt-5 · 🕒 1m",
       }),
     );
-    const footerCall = (mocked.sendBotTextMock as ReturnType<typeof vi.fn>).mock.calls[1]?.[0];
-    expect(footerCall).toEqual(
-      expect.objectContaining({
-        chatId: 777,
-        format: "raw",
-        text: "🛠️ Build · 🧠 openai/gpt-5 · 🕒 1m",
-      }),
-    );
-    expect(footerCall).not.toHaveProperty("options");
 
     runtime.shutdown();
     vi.useRealTimers();
@@ -247,7 +224,7 @@ describe("app/services/scheduled-task-runtime-service", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-16T17:00:00.000Z"));
 
-    await runtime.initialize({ api: {} } as Bot<Context>, await createDeliverySender());
+    await runtime.initialize(await createDeliverySender());
     await vi.runAllTimersAsync();
 
     expect(mocked.tasks).toHaveLength(1);
@@ -256,14 +233,12 @@ describe("app/services/scheduled-task-runtime-service", () => {
     expect(mocked.tasks[0]?.nextRunAt).toBe("2026-03-17T17:00:00.000Z");
     expect(mocked.sendBotTextMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        chatId: 777,
-        format: "raw",
-        text: expect.stringContaining("Task failed"),
+        notificationText: expect.stringContaining("Task failed"),
       }),
     );
     expect(mocked.sendBotTextMock).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        text: expect.stringContaining("Build · 🧠"),
+        notificationText: expect.stringContaining("Build · 🧠"),
       }),
     );
 
@@ -293,14 +268,12 @@ describe("app/services/scheduled-task-runtime-service", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-16T10:00:00.000Z"));
 
-    await runtime.initialize({ api: {} } as Bot<Context>, await createDeliverySender());
+    await runtime.initialize(await createDeliverySender());
     await vi.runAllTimersAsync();
 
     expect(mocked.sendBotTextMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        chatId: 777,
-        format: "raw",
-        text: expect.stringContaining("https://opencode.ai/docs/config/#models"),
+        notificationText: expect.stringContaining("https://opencode.ai/docs/config/#models"),
       }),
     );
 
@@ -322,7 +295,7 @@ describe("app/services/scheduled-task-runtime-service", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-16T10:00:00.000Z"));
 
-    await runtime.initialize({ api: {} } as Bot<Context>, await createDeliverySender());
+    await runtime.initialize(await createDeliverySender());
     await Promise.resolve();
 
     (runtime as unknown as { startExecution(taskId: string): void }).startExecution("task-1");

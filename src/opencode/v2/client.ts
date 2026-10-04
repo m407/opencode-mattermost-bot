@@ -1,4 +1,4 @@
-import type { Event, FilePartInput, OpencodeClient, TextPartInput } from "@opencode-ai/sdk/v2";
+import type { Event, FilePartInput, TextPartInput, SessionStatus } from "../types.js";
 import {
   OpenCode,
   type FormInfo,
@@ -6,22 +6,22 @@ import {
   type SessionInboxItem,
 } from "@opencode/client";
 import { Service } from "@opencode/client/service";
-import { createV2EventTranslator, type V1GlobalEvent } from "./events.js";
+import { createV2EventTranslator, type GlobalEvent } from "./events.js";
 import {
   toFormAnswer,
-  toV1Agent,
-  toV1Commands,
-  toV1FileDiff,
-  toV1GlobalSession,
-  toV1McpStatus,
-  toV1Message,
-  toV1Permission,
-  toV1Project,
-  toV1Providers,
-  toV1Question,
-  toV1Session,
+  toAgent,
+  toCommands,
+  toFileDiff,
+  toGlobalSession,
+  toMcpStatus,
+  toMessage,
+  toPermission,
+  toProject,
+  toProviders,
+  toQuestion,
+  toSession,
   toV2PromptInput,
-  type V1MessageWithParts,
+  type MessageWithParts,
 } from "./mappers.js";
 
 export type Result<T> = { data: T; error: undefined } | { data: undefined; error: unknown };
@@ -35,6 +35,7 @@ export type V2InboxDelivery = "steer" | "queue";
 
 interface PromptParams {
   sessionID: string;
+  directory?: string;
   agent?: string;
   model?: { providerID: string; modelID: string };
   variant?: string;
@@ -44,40 +45,9 @@ interface PromptParams {
   delivery?: V2InboxDelivery;
 }
 
-/**
- * The V2-only operations of the adapter, on top of the V1 client surface. Feature code
- * reaches them only after checking that the configured server is V2.
- */
-export interface V2ClientExtension {
-  session: {
-    /** Sends a prompt into the session inbox and returns the id it waits under. */
-    promptAsync: (
-      params: PromptParams & { directory?: string; delivery: V2InboxDelivery },
-    ) => Promise<Result<{ inboxID: string }>>;
-    inbox: {
-      /** Ids of the messages still waiting in the session inbox. */
-      list: (params: { sessionID: string }) => Promise<Result<string[]>>;
-      cancel: (params: { sessionID: string; inboxID: string }) => Promise<Result<true>>;
-    };
-  };
-  location: {
-    /**
-     * Rebuilds every loaded location from a fresh config; pending permissions and forms are
-     * cancelled, running sessions continue. Resolves once the rebuilds settle.
-     */
-    reload: () => Promise<Result<true>>;
-  };
-  file: {
-    /**
-     * Paths of the entries of a folder as the server's own filesystem lists it. No location
-     * is loaded for the folder, so listing one that is gone registers nothing on the server.
-     */
-    list: (params: { path: string }) => Promise<Result<string[]>>;
-  };
-}
-
 interface CommandParams {
   sessionID: string;
+  directory?: string;
   command: string;
   arguments?: string;
   agent?: string;
@@ -106,8 +76,8 @@ function isNotFound(error: Error): boolean {
   );
 }
 
-/** Reports V2 "not found" answers in the V1 error shape the bot already recognises. */
-function toV1Error(error: unknown): unknown {
+/** Reports V2 "not found" answers in the domain error shape the bot already recognises. */
+function toError(error: unknown): unknown {
   if (error instanceof Error && isNotFound(error)) {
     return { name: "NotFoundError", data: { message: error.message } };
   }
@@ -118,7 +88,7 @@ async function run<T>(operation: () => Promise<T>): Promise<Result<T>> {
   try {
     return { data: await operation(), error: undefined };
   } catch (error) {
-    return { data: undefined, error: toV1Error(error) };
+    return { data: undefined, error: toError(error) };
   }
 }
 
@@ -141,11 +111,11 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 /**
  * The OpenCode V2 server behind the client surface the bot already speaks: the methods the
- * bot calls, with V1 request and result shapes, and the V2 event stream translated into V1
+ * bot calls, with domain request and result shapes, and the V2 event stream translated into domain
  * events. Only that surface is implemented, plus the typed V2-only operations in
- * `V2ClientExtension`; everything else is absent.
+ * the inferred client type; everything else is absent.
  */
-export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient {
+export function createV2OpencodeClient(options: V2ClientOptions) {
   const client: OpenCodeClient = OpenCode.make({
     baseUrl: options.baseUrl,
     ...(options.headers ? { headers: options.headers } : {}),
@@ -259,18 +229,18 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
     return all;
   }
 
-  async function sessionMessages(sessionID: string, limit?: number): Promise<V1MessageWithParts[]> {
+  async function sessionMessages(sessionID: string, limit?: number): Promise<MessageWithParts[]> {
     const [session, messages] = await Promise.all([
       client.session.get({ sessionID }),
       listMessages(sessionID, limit),
     ]);
     const mapped = messages
-      .map((message) => toV1Message(message, sessionID, session.location.directory))
-      .filter((message): message is V1MessageWithParts => message !== null);
+      .map((message) => toMessage(message, sessionID, session.location.directory))
+      .filter((message): message is MessageWithParts => message !== null);
     return limit !== undefined ? mapped.slice(-limit) : mapped;
   }
 
-  async function lastAssistantMessage(sessionID: string): Promise<V1MessageWithParts> {
+  async function lastAssistantMessage(sessionID: string): Promise<MessageWithParts> {
     for (let attempt = 0; attempt < COMPLETION_POLL_ATTEMPTS; attempt++) {
       const messages = await sessionMessages(sessionID, 10);
       const last = [...messages].reverse().find((message) => message.info.role === "assistant");
@@ -321,12 +291,12 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
     return form;
   }
 
-  function translatedStream(signal?: AbortSignal): AsyncGenerator<V1GlobalEvent> {
+  function translatedStream(signal?: AbortSignal): AsyncGenerator<GlobalEvent> {
     const translate = createV2EventTranslator({
       onForm: rememberForm,
       inbox: inboxItems,
     });
-    const queue: V1GlobalEvent[] = [];
+    const queue: GlobalEvent[] = [];
     let wake: (() => void) | null = null;
     let finished = false;
     let failure: unknown;
@@ -407,23 +377,20 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
       health: () =>
         run(async () => {
           const info = await client.server.info();
+          if (
+            typeof info.version !== "string" ||
+            !/^2\./.test(info.version) ||
+            typeof info.pid !== "number"
+          )
+            throw new Error("Unsupported OpenCode server: expected V2 API info");
           return { healthy: true as const, version: info.version };
         }),
       event: async (eventOptions?: { signal?: AbortSignal }) => ({
         stream: translatedStream(eventOptions?.signal),
       }),
     },
-    event: {
-      subscribe: async (_params?: unknown, eventOptions?: { signal?: AbortSignal }) => ({
-        stream: (async function* () {
-          for await (const envelope of translatedStream(eventOptions?.signal)) {
-            yield envelope.payload;
-          }
-        })(),
-      }),
-    },
     project: {
-      list: () => run(async () => (await client.project.list()).map(toV1Project)),
+      list: () => run(async () => (await client.project.list()).map(toProject)),
     },
     location: {
       reload: () =>
@@ -447,7 +414,7 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
               ...(params.limit ? { limit: params.limit } : {}),
               ...(params.roots ? { parentID: null } : {}),
             });
-            return result.data.map(toV1GlobalSession);
+            return result.data.map(toGlobalSession);
           }),
       },
     },
@@ -460,42 +427,42 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
             ...(params.limit ? { limit: params.limit } : {}),
             ...(params.roots ? { parentID: null } : {}),
           });
-          return result.data.map(toV1Session);
+          return result.data.map(toSession);
         }),
-      get: (params: { sessionID: string }) =>
-        run(async () => toV1Session(await client.session.get({ sessionID: params.sessionID }))),
+      get: (params: { directory?: string; sessionID: string }) =>
+        run(async () => toSession(await client.session.get({ sessionID: params.sessionID }))),
       create: (params: { directory: string; title?: string }) =>
         run(async () =>
-          toV1Session(
+          toSession(
             await client.session.create({
               location: { directory: params.directory },
               ...(params.title ? { title: params.title } : {}),
             }),
           ),
         ),
-      update: (params: { sessionID: string; title?: string }) =>
+      update: (params: { directory?: string; sessionID: string; title?: string }) =>
         run(async () => {
           await client.session.update({
             sessionID: params.sessionID,
             ...(params.title !== undefined ? { title: params.title } : {}),
           });
-          return toV1Session(await client.session.get({ sessionID: params.sessionID }));
+          return toSession(await client.session.get({ sessionID: params.sessionID }));
         }),
-      delete: (params: { sessionID: string }) =>
+      delete: (params: { directory?: string; sessionID: string }) =>
         run(async () => {
           await client.session.remove({ sessionID: params.sessionID });
           return true;
         }),
-      status: () =>
+      status: (_params?: { directory?: string }) =>
         run(async () => {
           const active = await client.session.active();
           return Object.fromEntries(
-            Object.keys(active).map((id) => [id, { type: "busy" as const }]),
+            Object.keys(active).map((id) => [id, { type: "busy" } as SessionStatus]),
           );
         }),
-      messages: (params: { sessionID: string; limit?: number }) =>
+      messages: (params: { directory?: string; sessionID: string; limit?: number }) =>
         run(() => sessionMessages(params.sessionID, params.limit)),
-      message: (params: { sessionID: string; messageID: string }) =>
+      message: (params: { directory?: string; sessionID: string; messageID: string }) =>
         run(async () => {
           const [session, message] = await Promise.all([
             client.session.get({ sessionID: params.sessionID }),
@@ -504,7 +471,7 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
               messageID: params.messageID,
             }),
           ]);
-          const mapped = toV1Message(message, params.sessionID, session.location.directory);
+          const mapped = toMessage(message, params.sessionID, session.location.directory);
           if (!mapped) {
             throw Object.assign(new Error(`Message not found: ${params.messageID}`), {
               name: "MessageNotFoundError",
@@ -518,13 +485,13 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
           return params.delivery ? { inboxID: admitted.id } : undefined;
         }),
       inbox: {
-        list: (params: { sessionID: string }) =>
+        list: (params: { directory?: string; sessionID: string }) =>
           run(async () =>
             (await client.session.inbox.list({ sessionID: params.sessionID })).map(
               (item) => item.id,
             ),
           ),
-        cancel: (params: { sessionID: string; inboxID: string }) =>
+        cancel: (params: { directory?: string; sessionID: string; inboxID: string }) =>
           run(async () => {
             await client.session.inbox.cancel({
               sessionID: params.sessionID,
@@ -544,36 +511,36 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
           await runCommand(params);
           return undefined;
         }),
-      abort: (params: { sessionID: string }) =>
+      abort: (params: { directory?: string; sessionID: string }) =>
         run(async () => {
           await client.session.interrupt({ sessionID: params.sessionID });
           return true;
         }),
-      summarize: (params: { sessionID: string }) =>
+      summarize: (params: { directory?: string; sessionID: string }) =>
         run(async () => {
           await client.session.compact({ sessionID: params.sessionID, delivery: "queue" });
           return true;
         }),
-      diff: (params: { sessionID: string }) =>
+      diff: (params: { directory?: string; sessionID: string }) =>
         run(async () =>
-          (await client.session.diff({ sessionID: params.sessionID })).map(toV1FileDiff),
+          (await client.session.diff({ sessionID: params.sessionID })).map(toFileDiff),
         ),
-      fork: (params: { sessionID: string; messageID?: string }) =>
+      fork: (params: { directory?: string; sessionID: string; messageID?: string }) =>
         run(async () =>
-          toV1Session(
+          toSession(
             await client.session.fork({
               sessionID: params.sessionID,
               ...(params.messageID ? { before: params.messageID } : {}),
             }),
           ),
         ),
-      revert: (params: { sessionID: string; messageID: string }) =>
+      revert: (params: { directory?: string; sessionID: string; messageID: string }) =>
         run(async () => {
           await client.session.revert.stage({
             sessionID: params.sessionID,
             messageID: params.messageID,
           });
-          return toV1Session(await client.session.get({ sessionID: params.sessionID }));
+          return toSession(await client.session.get({ sessionID: params.sessionID }));
         }),
     },
     config: {
@@ -585,7 +552,7 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
             client.model.default(),
           ]);
           return {
-            providers: toV1Providers(providers.data, models.data),
+            providers: toProviders(providers.data, models.data),
             default: defaultModel.data
               ? { [defaultModel.data.providerID]: defaultModel.data.id }
               : {},
@@ -594,7 +561,7 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
     },
     app: {
       agents: (params?: { directory?: string }) =>
-        run(async () => (await client.agent.list(location(params?.directory))).data.map(toV1Agent)),
+        run(async () => (await client.agent.list(location(params?.directory))).data.map(toAgent)),
     },
     command: {
       list: (params?: { directory?: string }) =>
@@ -603,12 +570,12 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
             client.command.list(location(params?.directory)),
             client.skill.list(location(params?.directory)),
           ]);
-          return toV1Commands(commands.data, skills.data);
+          return toCommands(commands.data, skills.data);
         }),
     },
     mcp: {
       status: (params?: { directory?: string }) =>
-        run(async () => toV1McpStatus((await client.mcp.list(location(params?.directory))).data)),
+        run(async () => toMcpStatus((await client.mcp.list(location(params?.directory))).data)),
       connect: (params: { name: string; directory?: string }) =>
         run(async () => {
           await client.mcp.connect({ server: params.name, ...location(params.directory) });
@@ -626,10 +593,15 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
           const result = await client.form.list(location(params?.directory));
           return result.data.map((form) => {
             rememberForm(form);
-            return toV1Question(form);
+            return toQuestion(form);
           });
         }),
-      reply: (params: { requestID: string; answers?: string[][]; sessionID?: string }) =>
+      reply: (params: {
+        requestID: string;
+        directory?: string;
+        answers?: string[][];
+        sessionID?: string;
+      }) =>
         run(async () => {
           const form = await findForm(params.requestID, params.sessionID);
           await client.session.form.reply({
@@ -640,7 +612,7 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
           forms.delete(form.id);
           return true;
         }),
-      reject: (params: { requestID: string; sessionID?: string }) =>
+      reject: (params: { requestID: string; directory?: string; sessionID?: string }) =>
         run(async () => {
           const form = await findForm(params.requestID, params.sessionID);
           await client.session.form.cancel({ sessionID: form.sessionID, formID: form.id });
@@ -654,11 +626,12 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
           const result = await client.permission.request.list(location(params?.directory));
           return result.data.map((request) => {
             permissionSessions.set(request.id, request.sessionID);
-            return toV1Permission(request);
+            return toPermission(request);
           });
         }),
       reply: (params: {
         requestID: string;
+        directory?: string;
         reply?: "once" | "always" | "reject";
         message?: string;
         sessionID?: string;
@@ -680,8 +653,8 @@ export function createV2OpencodeClient(options: V2ClientOptions): OpencodeClient
     },
   };
 
-  // The adapter implements exactly the part of the V1 client surface the bot calls.
-  return adapter as unknown as OpencodeClient;
+  // The adapter implements exactly the part of the domain client surface the bot calls.
+  return adapter;
 }
 
 /**
@@ -695,3 +668,5 @@ export async function findRegisteredV2ServerUrl(): Promise<string | null> {
     return null;
   }
 }
+
+export type OpencodeClient = ReturnType<typeof createV2OpencodeClient>;

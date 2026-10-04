@@ -7,7 +7,9 @@ import { LocalCommandRegistry } from "../../../src/app/services/local-command-re
 const directories: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+  await Promise.all(
+    directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+  );
 });
 
 describe("LocalCommandRegistry", () => {
@@ -15,10 +17,19 @@ describe("LocalCommandRegistry", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "otb-local-commands-"));
     directories.push(directory);
     await writeFile(path.join(directory, "zeta.json"), '{"description":"Zeta","exec":"echo zeta"}');
-    await writeFile(path.join(directory, "alpha.json"), '{"description":"Alpha","exec":"echo alpha","allowWhenBusy":true,"future":1}');
-    await writeFile(path.join(directory, "start.json"), '{"description":"Built-in","exec":"echo no"}');
+    await writeFile(
+      path.join(directory, "alpha.json"),
+      '{"description":"Alpha","exec":"echo alpha","allowWhenBusy":true,"future":1}',
+    );
+    await writeFile(
+      path.join(directory, "start.json"),
+      '{"description":"Built-in","exec":"echo no"}',
+    );
 
-    const registry = await LocalCommandRegistry.load({ directoryPath: directory, builtInCommands: ["start"] });
+    const registry = await LocalCommandRegistry.load({
+      directoryPath: directory,
+      builtInCommands: ["start"],
+    });
 
     expect(registry.definitions()).toEqual([
       { command: "alpha", description: "Alpha", allowWhenBusy: true },

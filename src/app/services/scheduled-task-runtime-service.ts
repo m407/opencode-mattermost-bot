@@ -1,5 +1,3 @@
-import type { Bot, Context } from "grammy";
-import { config } from "../../config.js";
 import { t } from "../../i18n/index.js";
 import { logger } from "../../utils/logger.js";
 import { safeBackgroundTask } from "../../utils/safe-background-task.js";
@@ -89,8 +87,6 @@ function buildErrorDelivery(
 }
 
 export class ScheduledTaskRuntime {
-  private botApi: Bot<Context>["api"] | null = null;
-  private chatId: number | null = null;
   private deliverySender: ScheduledTaskDeliverySender | null = null;
   private initialized = false;
   private timersByTaskId = new Map<string, ReturnType<typeof setTimeout>>();
@@ -100,9 +96,7 @@ export class ScheduledTaskRuntime {
 
   constructor(private readonly foregroundSessionState: ForegroundSessionState) {}
 
-  async initialize(bot: Bot<Context>, deliverySender?: ScheduledTaskDeliverySender): Promise<void> {
-    this.botApi = bot.api;
-    this.chatId = config.telegram.allowedUserId;
+  async initialize(deliverySender: ScheduledTaskDeliverySender): Promise<void> {
     this.deliverySender = deliverySender ?? null;
 
     if (this.initialized) {
@@ -137,8 +131,7 @@ export class ScheduledTaskRuntime {
   async flushDeferredDeliveries(): Promise<void> {
     if (
       this.flushInProgress ||
-      !this.botApi ||
-      this.chatId === null ||
+      !this.deliverySender ||
       this.foregroundSessionState.isBusy() ||
       this.deliveryQueue.length === 0
     ) {
@@ -445,18 +438,12 @@ export class ScheduledTaskRuntime {
   }
 
   private async sendDelivery(delivery: QueuedScheduledTaskDelivery): Promise<boolean> {
-    if (!this.botApi || this.chatId === null) {
+    if (!this.deliverySender) {
       return false;
     }
 
     try {
-      if (this.deliverySender) {
-        return await this.deliverySender.send(delivery);
-      }
-
-      await this.botApi.sendMessage(this.chatId, delivery.notificationText);
-
-      return true;
+      return await this.deliverySender.send(delivery);
     } catch (error) {
       logger.error(
         `[ScheduledTaskRuntime] Failed to send delivery: id=${delivery.taskId}, status=${delivery.status}`,
