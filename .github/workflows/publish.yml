@@ -23,14 +23,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.0.0
         with:
-          node-version: 24
+          node-version: "lts/*"
           registry-url: "https://registry.npmjs.org"
           cache: npm
 
@@ -179,7 +179,7 @@ jobs:
 
       - name: Create GitHub release
         if: steps.determine.outputs.should_release == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3.0.3
         with:
           tag_name: ${{ steps.determine.outputs.tag_name }}
           name: ${{ steps.determine.outputs.tag_name }}
