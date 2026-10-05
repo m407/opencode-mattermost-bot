@@ -56,6 +56,35 @@ describe("callback authentication", () => {
     expect(onAction).toHaveBeenCalledTimes(1);
     expect((await send("callback-secret")).status).toBe(403);
   });
+  it("returns the action response once for simultaneous callback deliveries", async () => {
+    const { base, onAction, token } = await start();
+    const send = () =>
+      fetch(`${base}/mm/actions`, {
+        method: "POST",
+        body: JSON.stringify({
+          user_id: "user",
+          channel_id: "channel",
+          post_id: "post",
+          context: { token },
+        }),
+        headers: {
+          "content-type": "application/json",
+          "x-mattermost-callback-secret": "callback-secret",
+        },
+      });
+
+    const responses = await Promise.all([send(), send()]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 403]);
+    const accepted = responses.find((response) => response.status === 200)!;
+    expect(await accepted.json()).toEqual({ ephemeral_text: "done" });
+    expect(onAction).toHaveBeenCalledExactlyOnceWith("approve", {
+      user_id: "user",
+      channel_id: "channel",
+      post_id: "post",
+      context: { token },
+    });
+  });
   it("requires slash token and user/channel allowlist, preserving the thread", async () => {
     const { base, onCommand } = await start();
     const send = (extra: Record<string, string>) =>
