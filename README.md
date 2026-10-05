@@ -81,3 +81,9 @@ npm run test:runtime
 ```
 
 The runtime is in `src/mattermost`, domain services in `src/app`, and SDK/version compatibility in `src/opencode`. The transport-only adapter is exported as `./mattermost` and can be used independently. See [architecture](CONCEPT.md), [product behavior](PRODUCT.md), and [contributing](CONTRIBUTING.md).
+
+## npm package and releases
+
+After publication, install with `npm install --global @m407/opencode-mattermost-bot`, then run `opencode-mattermost config` and `opencode-mattermost start`.
+
+GitHub Actions publishes versions from `main` to npm (`latest` for stable releases, `next` for release candidates). See [npm publishing setup](docs/NPM_PUBLISHING.md) for the initial `NPM_TOKEN` setup, token-free Trusted Publishing, and release commands.
