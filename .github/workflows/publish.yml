@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   publish:
-    name: Publish npm package and GitHub release
+    name: Stage npm package or finalize approved release
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -32,9 +32,9 @@ jobs:
         with:
           node-version: "lts/*"
           registry-url: "https://registry.npmjs.org"
-          cache: npm
+          package-manager-cache: false
 
-      - name: Install npm with Trusted Publishing support
+      - name: Install npm with staged publishing support
         run: npm install --global npm@11
 
       - name: Show tool versions
@@ -70,68 +70,57 @@ jobs:
 
           TAG_NAME="v$CURRENT_VERSION"
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
-          if git show-ref --verify --quiet "refs/tags/$TAG_NAME"; then
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-          fi
 
-      - name: Check npm registry
+      - name: Check published and staged versions
         id: registry
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync, appendFileSync } from 'node:fs';
-          const { name, version } = JSON.parse(readFileSync('package.json', 'utf8'));
-          const url = `https://registry.npmjs.org/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
-          const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-          if (response.status !== 404 && !response.ok) {
-            throw new Error(`npm registry returned HTTP ${response.status}; refusing to assume the version is unpublished`);
-          }
-          const shouldPublish = response.status === 404;
-          if (!shouldPublish) {
-            const published = await response.json();
-            if (published.name !== name || published.version !== version) {
-              throw new Error('Unexpected npm package metadata');
-            }
-          }
-          appendFileSync(process.env.GITHUB_OUTPUT, `should_publish=${shouldPublish}\n`);
-          process.stdout.write(`${name}@${version}: ${shouldPublish ? 'ready to publish' : 'already published'}\n`);
-          NODE
-
-      - name: No release needed
-        if: steps.determine.outputs.should_release != 'true' && steps.registry.outputs.should_publish != 'true'
-        run: 'echo "Package version and Git tag already exist; nothing to publish"'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_DIST_TAG: ${{ steps.determine.outputs.dist_tag }}
+        run: node scripts/npm-release-state.mjs
 
       - name: Install dependencies
-        if: steps.determine.outputs.should_release == 'true' || steps.registry.outputs.should_publish == 'true'
+        if: steps.registry.outputs.state == 'missing'
         run: npm ci
 
       - name: Lint
-        if: steps.determine.outputs.should_release == 'true' || steps.registry.outputs.should_publish == 'true'
+        if: steps.registry.outputs.state == 'missing'
         run: npm run lint
 
       - name: Typecheck
-        if: steps.determine.outputs.should_release == 'true' || steps.registry.outputs.should_publish == 'true'
+        if: steps.registry.outputs.state == 'missing'
         run: npm run typecheck
 
       - name: Build
-        if: steps.determine.outputs.should_release == 'true' || steps.registry.outputs.should_publish == 'true'
+        if: steps.registry.outputs.state == 'missing'
         run: npm run build
 
       - name: Test
-        if: steps.determine.outputs.should_release == 'true' || steps.registry.outputs.should_publish == 'true'
+        if: steps.registry.outputs.state == 'missing'
         run: npm run test
 
       - name: Runtime smoke test
-        if: steps.determine.outputs.should_release == 'true' || steps.registry.outputs.should_publish == 'true'
+        if: steps.registry.outputs.state == 'missing'
         run: node scripts/smoke-runtime.mjs
 
+      - name: npm release state tests
+        if: steps.registry.outputs.state == 'missing'
+        run: node --test scripts/npm-release-state.node-tests.mjs
+
       - name: Check package contents
-        if: steps.registry.outputs.should_publish == 'true'
+        if: steps.registry.outputs.state == 'missing'
         run: npm pack --dry-run
 
+      - name: Select the published source commit
+        if: steps.registry.outputs.state == 'published'
+        env:
+          RELEASE_COMMIT: ${{ steps.registry.outputs.release_commit }}
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$RELEASE_COMMIT" origin/main
+          git checkout --detach "$RELEASE_COMMIT"
+
       - name: Generate release notes
-        if: steps.determine.outputs.should_release == 'true'
+        if: steps.registry.outputs.state == 'published'
         id: notes
         run: |
           set -euo pipefail
@@ -154,31 +143,41 @@ jobs:
 
           echo "body_file=$BODY_FILE" >> "$GITHUB_OUTPUT"
 
-      - name: Publish to npm
-        if: steps.registry.outputs.should_publish == 'true'
+      - name: Stage npm package for 2FA approval
+        if: steps.registry.outputs.state == 'missing'
         env:
-          # Optional for initial publication; omit after configuring npm Trusted Publishing.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DIST_TAG: ${{ steps.determine.outputs.dist_tag }}
+          PRIVATE_REPOSITORY: ${{ github.event.repository.private }}
         run: |
-          if [ "${{ github.event.repository.private }}" = "true" ]; then
-            echo "Private repository detected: publishing without provenance"
-            npm publish --access public --tag ${{ steps.determine.outputs.dist_tag }}
+          set -euo pipefail
+          if [ "$PRIVATE_REPOSITORY" = "true" ]; then
+            npm stage publish --access public --tag "$DIST_TAG"
           else
-            echo "Public repository detected: publishing with provenance"
-            npm publish --access public --tag ${{ steps.determine.outputs.dist_tag }} --provenance
+            npm stage publish --access public --tag "$DIST_TAG" --provenance
           fi
+          echo "Package staged. Review and approve it on npmjs with 2FA, then rerun Publish on main to create the GitHub release." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create and push git tag
-        if: steps.determine.outputs.should_release == 'true'
+        if: steps.registry.outputs.state == 'published'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${{ steps.determine.outputs.tag_name }}"
-          git push origin "${{ steps.determine.outputs.tag_name }}"
+          TAG_NAME="${{ steps.determine.outputs.tag_name }}"
+          RELEASE_COMMIT="${{ steps.registry.outputs.release_commit }}"
+          if git show-ref --verify --quiet "refs/tags/$TAG_NAME"; then
+            test "$(git rev-parse "$TAG_NAME^{commit}")" = "$RELEASE_COMMIT" || {
+              echo "Existing release tag does not match the published package gitHead"
+              exit 1
+            }
+          else
+            git tag "$TAG_NAME" "$RELEASE_COMMIT"
+            git push origin "$TAG_NAME"
+          fi
 
       - name: Create GitHub release
-        if: steps.determine.outputs.should_release == 'true'
+        if: steps.registry.outputs.state == 'published'
         uses: softprops/action-gh-release@v3.0.3
         with:
           tag_name: ${{ steps.determine.outputs.tag_name }}

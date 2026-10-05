@@ -38,7 +38,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/m407/opencode-telegram-bot.git"
+    "url": "git+https://github.com/m407/opencode-mattermost-bot.git"
   },
   "keywords": [
     "opencode",
@@ -50,9 +50,9 @@
   "author": "grinev",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/m407/opencode-telegram-bot/issues"
+    "url": "https://github.com/m407/opencode-mattermost-bot/issues"
   },
-  "homepage": "https://github.com/m407/opencode-telegram-bot#readme",
+  "homepage": "https://github.com/m407/opencode-mattermost-bot#readme",
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.4.0",
     "@opencode/client": "^2.0.16",
