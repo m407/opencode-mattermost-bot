@@ -45,5 +45,8 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: npm release state tests
+        run: node --test scripts/npm-release-state.node-tests.mjs
+
       - name: Runtime smoke test
         run: node scripts/smoke-runtime.mjs

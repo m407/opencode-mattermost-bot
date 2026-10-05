@@ -86,4 +86,4 @@ The runtime is in `src/mattermost`, domain services in `src/app`, and SDK/versio
 
 After publication, install with `npm install --global @m407/opencode-mattermost-bot`, then run `opencode-mattermost config` and `opencode-mattermost start`.
 
-GitHub Actions publishes versions from `main` to npm (`latest` for stable releases, `next` for release candidates). See [npm publishing setup](docs/NPM_PUBLISHING.md) for the initial `NPM_TOKEN` setup, token-free Trusted Publishing, and release commands.
+GitHub Actions stages versions from `main` for npm (`latest` for stable releases, `next` for release candidates). A maintainer reviews and approves each stage with 2FA on npmjs, then reruns the workflow to create the GitHub release. See [npm publishing setup](docs/NPM_PUBLISHING.md) for the stage-only `NPM_TOKEN` setup, approval process, and release commands.

@@ -1,33 +1,22 @@
-# Publishing to npm
+# Staged publishing to npm
 
 The public package is `@m407/opencode-mattermost-bot`, with the CLI `opencode-mattermost`.
 
-`.github/workflows/publish.yml` runs on pushes to `main`, or manually through **Actions → Publish → Run workflow** with `main` selected. Other branches cannot publish. Stable versions (`X.Y.Z`) use the `latest` npm tag; release candidates (`X.Y.Z-rc.N`) use `next`.
+`.github/workflows/publish.yml` runs on pushes to `main`, or manually through **Actions → Publish → Run workflow** with `main` selected. The job's ref guard also blocks manual runs on other branches. Stable versions (`X.Y.Z`) use `latest`; release candidates (`X.Y.Z-rc.N`) use `next`.
 
-## First publication
+## Configure the stage-only token
 
-The npm account must own or have publishing access to the `@m407` scope. For the first publication of a package that does not yet exist on npm:
+The npm account must have publishing access to the `@m407` scope and 2FA enabled.
 
-1. Create an npm granular access token with write access to the scope/package and permission to bypass 2FA for automated publishing. Use a short expiry and the narrowest permissions available.
-2. In `m407/opencode-telegram-bot`, add that token as the GitHub Actions repository secret **NPM_TOKEN** under **Settings → Secrets and variables → Actions**. Never commit it to the repository.
-3. Merge the workflow changes and run **Publish** on `main` if the push-triggered run has not already published the package.
+1. On npmjs.com, open **Access Tokens → Generate New Token** and create a granular token with **Read and write (stage only)** permission. Select only this package or its scope. For the first publication, select the `@m407` scope because the package does not yet exist. Organization management permissions alone do not grant package publishing access.
+2. Leave **Bypass two-factor authentication** disabled. Staging does not require an OTP; approval does. Set a short expiry and rotate the token before it expires.
+3. In GitHub repository `m407/opencode-mattermost-bot`, save it as repository Actions secret **NPM_TOKEN** under **Settings → Secrets and variables → Actions**. Never put the value in source, logs, issues, or chat.
 
-The workflow publishes publicly to `https://registry.npmjs.org/`. A public GitHub repository also produces npm provenance. The package's `prepack` hook builds `dist` before packing or publishing, including when publishing manually.
+The workflow uses Node.js's latest LTS and installs the latest npm 11. Staged publishing requires npm **11.15.0 or newer** and Node.js **22.14.0 or newer**. `actions/setup-node` configures registry authentication; only the stage inspection/upload steps receive `NODE_AUTH_TOKEN`.
 
-## Subsequent publications without an npm token
+This workflow deliberately uses a granular token for stage inspection, including retries. OIDC can upload stages but cannot list/review/approve them. If switching to OIDC later, redesign the stage inspection authentication as well; removing `NPM_TOKEN` is not sufficient.
 
-After the package exists, open its npm **Settings → Trusted publishing** and add GitHub Actions with these values:
-
-| Field                | Value                                           |
-| -------------------- | ----------------------------------------------- |
-| Organization or user | `m407`                                          |
-| Repository           | `opencode-telegram-bot`                         |
-| Workflow filename    | `publish.yml`                                   |
-| Environment          | Leave empty (the job has no GitHub environment) |
-
-The workflow uses a GitHub-hosted runner, Node.js 24, npm 11 with OIDC support, and `id-token: write`. Once Trusted Publishing is configured, remove the GitHub `NPM_TOKEN` secret and revoke the bootstrap token in npm. npm will authenticate through GitHub OIDC.
-
-## Releasing a version
+## Prepare and stage a version
 
 ```sh
 npm run release:prepare -- patch
@@ -35,15 +24,52 @@ npm run release:prepare -- patch
 npm run release:rc
 ```
 
-Review the version changes in `package.json` and `package-lock.json`, and the generated notes for stable releases. Commit them and merge into `main`. The workflow runs lint, type checking, build, tests and the compiled runtime smoke test before publishing. It also checks the package contents with `npm pack --dry-run`.
+Review the changes to `package.json`, `package-lock.json`, and release notes, commit them, and merge into `main`. The workflow checks whether the exact version is public or already staged. Registry errors other than 404, invalid metadata, and stage-list authentication failures stop the run rather than being interpreted as permission to upload.
 
-Publishing is determined by whether that exact package version exists in npm, independently of Git tags. An existing Git tag cannot block a missing npm version, and an already published npm version is skipped on retries. Registry errors other than 404 fail the job instead of being treated as a missing package. Missing Git tags/releases are created after successful publication (or when the version already exists in npm).
+For a missing version, lint, typecheck, build, tests, runtime smoke test, and package inspection run before:
 
-If publication succeeds but a later step fails, rerun the workflow. If the Git tag was already pushed but GitHub release creation failed, create the GitHub release for that tag manually. Published npm versions cannot be overwritten: use a new version for changed package contents.
+```sh
+npm stage publish --access public --tag latest --provenance
+# Release candidates use --tag next.
+```
+
+Public GitHub repositories use provenance; private repositories omit that flag. `repository.url` must identify `https://github.com/m407/opencode-mattermost-bot`. The package's `prepack` hook rebuilds `dist` before packing/staging. Staging succeeds without bypassing 2FA and does not make the actual version available to users. For a new package, npm creates a public placeholder `0.0.0-stage`.
+
+A successful Actions upload means **waiting for approval**, not **published**. No release tag or GitHub Release is created at this point.
+
+## Review and approve with 2FA
+
+Sign in to npmjs.com, open **Staged Packages**, inspect the package/version, and choose **Approve**, completing the 2FA challenge. Alternatively use your own interactive npm session with npm >=11.15.0:
+
+```sh
+npm login
+npm stage list @m407/opencode-mattermost-bot
+npm stage view <stage-id>
+npm stage download <stage-id>
+npm stage approve <stage-id>
+```
+
+Approval prompts for 2FA. Do not store an OTP in GitHub secrets or try to approve with the CI token. Reject unwanted stages with `npm stage reject <stage-id>` (also requires 2FA).
+
+After approval, verify the exact version and run **Actions → Publish → Run workflow** on `main` again. Keep the approved version in `main`'s `package.json` until finalization; the workflow processes the current version, not an arbitrary old release.
+
+```sh
+npm view @m407/opencode-mattermost-bot@0.26.3 version gitHead
+```
+
+When the exact version is publicly available, the workflow validates its `gitHead` against `main` history, reads release notes from that source commit, and creates the Git tag and GitHub Release for that commit. It repairs a missing GitHub Release even if the tag already exists. A tag pointing at another commit fails explicitly; it is never moved automatically.
+
+## Retries and staging versus dist-tags
+
+- An existing staged version is retained, and its stage ID is reported. Inspect its contents before approving; later commits are not automatically substituted. Reject and restage if the contents need correction.
+- A pending version's dist-tag is immutable. A mismatched tag fails the workflow; reject the stage before uploading with a different tag.
+- Already public versions skip stage credentials and uploads. Public npm versions cannot be overwritten: change the version for changed contents.
+- `npm publish --tag staging` immediately publishes a public version with the dist-tag `staging`; it is not staged publishing. A stage-only token rejects direct `npm publish` with `E_STAGE_REQUIRED`.
+- A stage-only token still has other write capabilities (including dist-tag changes and deprecation). Limit scope and lifetime and protect it accordingly.
 
 ## Installation
 
-After the first successful publication:
+After approval and confirmed publication:
 
 ```sh
 npm install --global @m407/opencode-mattermost-bot
@@ -51,4 +77,10 @@ opencode-mattermost config
 opencode-mattermost start
 ```
 
-Use `@m407/opencode-mattermost-bot@next` to install a release candidate.
+Use `@m407/opencode-mattermost-bot@next` for release candidates.
+
+## References
+
+- [Staged publishing](https://docs.npmjs.com/staged-publishing)
+- [Stage-only tokens](https://docs.npmjs.com/about-access-tokens#about-stage-only-tokens)
+- [npm stage commands](https://docs.npmjs.com/cli/v11/commands/npm-stage)
